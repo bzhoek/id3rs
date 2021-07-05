@@ -34,7 +34,9 @@ fn syncsafe(bytes: &[u8]) -> u64 {
 
 #[cfg(test)]
 mod tests {
-  use crate::syncsafe;
+  use walkdir::WalkDir;
+
+  use crate::{syncsafe, Tags};
 
   #[test]
   fn test_frame() {
@@ -48,5 +50,26 @@ mod tests {
     let bytes = [0u8, 0x02, 0x3e, 0x77];
     let result = syncsafe(&bytes);
     assert_eq!(40823, result);
+  }
+
+  #[test]
+  fn test_tags() {
+    let tags = Tags::read_from("/Users/bas/OneDrive/PioneerDJ/melodic/39. Deep in the Dark (feat. LENN V) [Fur Coat Remix] -- D-Nox [1279108732].mp3").unwrap();
+    assert_eq!(4, tags.version());
+    assert!(!tags.extended())
+  }
+
+  #[test]
+  fn find_extended() {
+    let walker = WalkDir::new("/Users/bas/OneDrive/PioneerDJ").into_iter();
+    for entry in walker {
+      let entry = entry.unwrap();
+      let path = entry.path().to_str().unwrap();
+      if path.ends_with(".mp3") {
+        println!("{}", path);
+        let tags = Tags::read_from(path).unwrap();
+        assert_eq!(0, tags.flags(), "{:?}", entry);
+      }
+    }
   }
 }

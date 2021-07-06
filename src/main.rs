@@ -1,6 +1,7 @@
 use std::convert::TryInto;
 use std::fs::File;
-use std::io::{Read};
+use std::io::{Read, Seek};
+use std::io::SeekFrom::Current;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -45,30 +46,35 @@ fn main() -> Result<()> {
   let max = syncsafe(&header[6..10]);
   println!("sig {} version {} flags {} size {} {:?}", signature, version, flags, max, header);
   loop {
+    let pos = file.seek(Current(0)).unwrap();
     file.read_exact(&mut header)?;
     let idval = u32::from_be_bytes(header[0..4].try_into().unwrap());
     if idval == 0 { break; }
 
     let idstr = String::from_utf8(header[0..4].to_owned()).unwrap();
     let size = syncsafe(&header[4..8]);
-    println!("frame {} size {} {:?}", idstr, size, header);
+    println!("frame {} at {} size {} {:?}", idstr, pos, size, header);
 
     let mut bytes: Vec<u8> = vec![0; size as usize];
     file.read_exact(&mut *bytes)?;
 
-    if idstr == "GEOB" {}
-
-    if idstr.starts_with("T") {
-      print_string(bytes)
+    if idstr == "GEOB" {
+      // https://stackoverflow.com/a/42067321/10326604
+      let end = 1 + bytes[1..].iter()
+        .position(|&c| c == b'\0')
+        .unwrap_or(bytes.len());
+      print_string(&bytes[0..end].to_owned())
     }
 
-    // let pos = file.seek(Current(size as i64)).unwrap();
+    if idstr.starts_with("T") {
+      print_string(&bytes)
+    }
   }
   Ok(())
 }
 
-fn print_string(bytes: Vec<u8>) {
-  if bytes[0] == 1 {
+fn print_string(bytes: &Vec<u8>) {
+  if bytes[0] == 1 && bytes[1] == 0xff && bytes[2] == 0xfe {
     // https://stackoverflow.com/q/36251992/10326604
     let words: Vec<u16> = bytes[3..]
       .chunks_exact(2)

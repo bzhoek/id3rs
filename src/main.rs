@@ -1,7 +1,6 @@
 use std::convert::TryInto;
 use std::fs::File;
-use std::io::{Read, Seek};
-use std::io::SeekFrom::Current;
+use std::io::{Read};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -10,6 +9,7 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + S
 // https://www.the-roberts-family.net/metadata/mp3.html
 
 pub struct Tags {
+  #[allow(dead_code)]
   source: File,
   buffer: [u8; 10],
 }
@@ -37,45 +37,50 @@ impl Tags {
 
 fn main() -> Result<()> {
   let mut file = std::fs::File::open("/Users/bas/OneDrive/PioneerDJ/melodic/39. Deep in the Dark (feat. LENN V) [Fur Coat Remix] -- D-Nox [1279108732].mp3")?;
-  let mut buffer = [0; 10];
-  file.read_exact(&mut buffer)?;
-  let signature = String::from_utf8(buffer[0..3].to_owned()).unwrap();
-  let version = buffer[3];
-  let flags = buffer[5];
-  let max = syncsafe(&buffer[6..10]);
-  println!("sig {} version {} flags {} size {} {:?}", signature, version, flags, max, buffer);
+  let mut header = [0; 10];
+  file.read_exact(&mut header)?;
+  let signature = String::from_utf8(header[0..3].to_owned()).unwrap();
+  let version = header[3];
+  let flags = header[5];
+  let max = syncsafe(&header[6..10]);
+  println!("sig {} version {} flags {} size {} {:?}", signature, version, flags, max, header);
   loop {
-    file.read_exact(&mut buffer)?;
-    let idval = u32::from_be_bytes(buffer[0..4].try_into().unwrap());
+    file.read_exact(&mut header)?;
+    let idval = u32::from_be_bytes(header[0..4].try_into().unwrap());
     if idval == 0 { break; }
-    let idstr = String::from_utf8(buffer[0..4].to_owned()).unwrap();
-    let size = syncsafe(&buffer[4..8]);
-    println!("frame {} size {} {:?}", idstr, size, buffer);
 
-    if !idstr.starts_with("T") {
-      file.seek(Current(size as i64)).unwrap();
-      continue;
+    let idstr = String::from_utf8(header[0..4].to_owned()).unwrap();
+    let size = syncsafe(&header[4..8]);
+    println!("frame {} size {} {:?}", idstr, size, header);
+
+    let mut bytes: Vec<u8> = vec![0; size as usize];
+    file.read_exact(&mut *bytes)?;
+
+    if idstr == "GEOB" {}
+
+    if idstr.starts_with("T") {
+      print_string(bytes)
     }
 
-    let mut text: Vec<u8> = vec![0; size as usize];
-    file.read_exact(&mut *text)?;
-    if text[0] == 1 {
-      let title: Vec<u16> = text[3..]
-        .chunks_exact(2)
-        .into_iter()
-        .map(|a| u16::from_ne_bytes([a[0], a[1]]))
-        .collect();
-      let title = title.as_slice();
-      let title = String::from_utf16(title).unwrap();
-
-      println!("text {:?}", title);
-    } else {
-      let title = String::from_utf8(text[1..].to_owned()).unwrap();
-      println!("text {:?}", title);
-    }
     // let pos = file.seek(Current(size as i64)).unwrap();
   }
   Ok(())
+}
+
+fn print_string(bytes: Vec<u8>) {
+  if bytes[0] == 1 {
+    // https://stackoverflow.com/q/36251992/10326604
+    let words: Vec<u16> = bytes[3..]
+      .chunks_exact(2)
+      .into_iter()
+      .map(|a| u16::from_ne_bytes([a[0], a[1]]))
+      .collect();
+    let title = String::from_utf16(&*words).unwrap();
+    println!("text[{}] {:?}", bytes[0], title);
+  } else {
+    let title = String::from_utf8(bytes[1..].to_owned()).unwrap();
+    println!("text[{}] {:?}", bytes[0], title);
+  }
 }
 
 // only 7 bytes of each byte are significant

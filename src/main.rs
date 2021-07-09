@@ -86,26 +86,11 @@ fn main() -> Result<()> {
     }
 
     if idstr.starts_with("T") {
-      print_string(&bytes)
+      let text = string_from_bytes(&bytes[1..].to_vec());
+      debug!("{:?}", text);
     }
   }
   Ok(())
-}
-
-fn print_string(bytes: &Vec<u8>) {
-  if bytes[1] == 0xff && bytes[2] == 0xfe {
-    // https://stackoverflow.com/q/36251992/10326604
-    let words: Vec<u16> = bytes[3..]
-      .chunks_exact(2)
-      .into_iter()
-      .map(|a| u16::from_ne_bytes([a[0], a[1]]))
-      .collect();
-    let title = String::from_utf16(&*words).unwrap();
-    println!("text[{}] {:?}", bytes[0], title);
-  } else {
-    let title = String::from_utf8(bytes[1..].to_owned()).unwrap();
-    println!("text[{}] {:?}", bytes[0], title);
-  }
 }
 
 fn string_from_bytes(bytes: &Vec<u8>) -> (String, usize) {
@@ -118,7 +103,7 @@ fn string_from_bytes(bytes: &Vec<u8>) -> (String, usize) {
       .collect();
     let len = words.iter()
       .position(|&c| c == 0)
-      .unwrap_or(bytes.len());
+      .unwrap_or(words.len());
     (String::from_utf16(&words[..len]).unwrap(), 2 + len * 2 + 2)
   } else {
     let len = bytes.iter()
@@ -135,8 +120,6 @@ fn syncsafe(bytes: &[u8]) -> u64 {
 
 #[cfg(test)]
 mod tests {
-  use walkdir::WalkDir;
-
   use crate::{string_from_bytes, syncsafe, Tags};
 
   #[test]
@@ -157,7 +140,7 @@ mod tests {
   fn find_u8_eol() {
     let bytes: Vec<u8> = vec!(b'j', b's', b'o', b'n', 0);
     let result = string_from_bytes(&bytes);
-    assert_eq!(("json".to_owned(), 4), result);
+    assert_eq!(("json".to_owned(), 5), result);
   }
 
 
@@ -167,7 +150,7 @@ mod tests {
     let bytes: Vec<[u8; 2]> = words.iter().map(|w| [*w as u8, (w >> 8) as u8]).collect();
     let bytes: Vec<u8> = bytes.iter().flat_map(|b| b.to_vec()).collect();
     let result = string_from_bytes(&bytes);
-    assert_eq!(("Cue".to_owned(), 8), result);
+    assert_eq!(("Cue".to_owned(), 10), result);
   }
 
   #[test]
@@ -175,19 +158,5 @@ mod tests {
     let tags = Tags::read_from("/Users/bas/OneDrive/PioneerDJ/melodic/39. Deep in the Dark (feat. LENN V) [Fur Coat Remix] -- D-Nox [1279108732].mp3").unwrap();
     assert_eq!(4, tags.version());
     assert!(!tags.extended())
-  }
-
-  #[test]
-  fn find_extended() {
-    let walker = WalkDir::new("/Users/bas/OneDrive/PioneerDJ").into_iter();
-    for entry in walker {
-      let entry = entry.unwrap();
-      let path = entry.path().to_str().unwrap();
-      if path.ends_with(".mp3") {
-        println!("{}", path);
-        let tags = Tags::read_from(path).unwrap();
-        assert_eq!(0, tags.flags(), "{:?}", entry);
-      }
-    }
   }
 }

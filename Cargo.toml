@@ -5,6 +5,5 @@ authors = ["Bas van der Hoek <bas@hoek.com>"]
 edition = "2018"
 
 [dependencies]
-walkdir = "2.3.1"
 log = "0.4.14"
 env_logger = "0.8.3"

@@ -47,8 +47,9 @@ impl Tags {
 
 fn main() -> Result<()> {
   configure_logging();
+  let filepath = std::env::args().nth(1).expect("No filepath given.");
+  let mut file = std::fs::File::open(filepath)?;
 
-  let mut file = std::fs::File::open("/Users/bas/OneDrive/PioneerDJ/melodic/39. Deep in the Dark (feat. LENN V) [Fur Coat Remix] -- D-Nox [1279108732].mp3")?;
   let mut header = [0; 10];
   file.read_exact(&mut header)?;
   let signature = String::from_utf8(header[0..3].to_owned()).unwrap();

@@ -3,7 +3,16 @@ use std::fs::File;
 use std::io::{Read, Seek};
 use std::io::SeekFrom::Current;
 
+use env_logger::Env;
+use env_logger::Target::Stdout;
+use log::{debug, info, warn};
+
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
+pub fn configure_logging() {
+  env_logger::Builder::from_env(Env::default().default_filter_or("debug")).target(Stdout).init();
+  debug!("Debug logging");
+}
 
 // https://id3.org/id3v2.3.0
 // https://mutagen-specs.readthedocs.io/en/latest/id3/id3v2.4.0-structure.html
@@ -37,6 +46,8 @@ impl Tags {
 }
 
 fn main() -> Result<()> {
+  configure_logging();
+
   let mut file = std::fs::File::open("/Users/bas/OneDrive/PioneerDJ/melodic/39. Deep in the Dark (feat. LENN V) [Fur Coat Remix] -- D-Nox [1279108732].mp3")?;
   let mut header = [0; 10];
   file.read_exact(&mut header)?;
@@ -63,7 +74,19 @@ fn main() -> Result<()> {
       let end = 1 + bytes[1..].iter()
         .position(|&c| c == b'\0')
         .unwrap_or(bytes.len());
-      print_string(&bytes[0..end].to_owned())
+      print_string(&bytes[0..end].to_owned());
+      let start = end;
+      info!("start {}", pos + 10 + start as u64);
+      let end = start + 1 + bytes[start..].iter()
+        .position(|&c| c == b'\0')
+        .unwrap_or(bytes.len());
+      print_string(&bytes[start..end].to_owned());
+      let start = end;
+      info!("start {}", pos + 10 + start as u64);
+      let end = start + 1 + bytes[start..].iter()
+        .position(|&c| c == b'\0')
+        .unwrap_or(bytes.len());
+      print_string(&bytes[start..end].to_owned());
     }
 
     if idstr.starts_with("T") {
@@ -73,8 +96,15 @@ fn main() -> Result<()> {
   Ok(())
 }
 
+fn find_end(bytes: &[u8]) -> usize {
+  let start = if bytes[1] == 0xff && bytes[2] == 0xfe { 3 } else { 1 };
+  bytes[start..].iter()
+    .position(|&c| c == b'\0')
+    .unwrap_or(bytes.len())
+}
+
 fn print_string(bytes: &Vec<u8>) {
-  if bytes[0] == 1 && bytes[1] == 0xff && bytes[2] == 0xfe {
+  if bytes[1] == 0xff && bytes[2] == 0xfe {
     // https://stackoverflow.com/q/36251992/10326604
     let words: Vec<u16> = bytes[3..]
       .chunks_exact(2)
@@ -89,6 +119,26 @@ fn print_string(bytes: &Vec<u8>) {
   }
 }
 
+fn string_from_bytes(bytes: &Vec<u8>) -> String {
+  // https://stackoverflow.com/q/36251992/10326604
+  if bytes[0] == 0xff && bytes[1] == 0xfe {
+    let words: Vec<u16> = bytes[2..]
+      .chunks_exact(2)
+      .into_iter()
+      .map(|a| u16::from_ne_bytes([a[0], a[1]]))
+      .collect();
+    let len = words.iter()
+      .position(|&c| c == 0)
+      .unwrap_or(bytes.len());
+    String::from_utf16(&*words).unwrap()
+  } else {
+    let len = bytes.iter()
+      .position(|&c| c == b'\0')
+      .unwrap_or(bytes.len());
+    String::from_utf8(bytes[..len].to_owned()).unwrap()
+  }
+}
+
 // only 7 bytes of each byte are significant
 fn syncsafe(bytes: &[u8]) -> u64 {
   bytes.iter().fold(0, |result, byte| { result << 7 | (*byte as u64) })
@@ -98,7 +148,7 @@ fn syncsafe(bytes: &[u8]) -> u64 {
 mod tests {
   use walkdir::WalkDir;
 
-  use crate::{syncsafe, Tags};
+  use crate::{string_from_bytes, syncsafe, Tags};
 
   #[test]
   fn test_frame() {
@@ -112,6 +162,32 @@ mod tests {
     let bytes = [0u8, 0x02, 0x3e, 0x77];
     let result = syncsafe(&bytes);
     assert_eq!(40823, result);
+  }
+
+  #[test]
+  fn find_u8_eol() {
+    let bytes: Vec<u8> = vec!(b'j', b's', b'o', b'n', 0);
+    let string = string_from_bytes(&bytes);
+    assert_eq!(4, string.len())
+  }
+
+
+  #[test]
+  fn find_u16_eol() {
+    let words: [u16; 5] = [0xffee, 0x4300, 0x7500, 0x6500, 0];
+    let bytes: Vec<[u8; 2]> = words.iter().map(|w| [*w as u8, (w >> 8) as u8]).collect();
+    let bytes: Vec<u8> = bytes.iter().flat_map(|b| b.to_vec()).collect();
+    println!("{:?}", bytes);
+  }
+
+  fn bytes_to_len(bytes: &[u8]) -> usize {
+    if bytes.len() > 2 && bytes[0] == 0xff && bytes[1] == 0xfe {
+      4
+    } else {
+      bytes.iter()
+        .position(|&c| c == b'\0')
+        .unwrap_or(bytes.len())
+    }
   }
 
   #[test]

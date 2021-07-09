@@ -98,6 +98,17 @@ fn main() -> Result<()> {
   Ok(())
 }
 
+// https://id3.org/id3v2.4.0-structure
+// Frames that allow different types of text encoding contains a text
+// encoding description byte. Possible encodings:
+//
+// $00   ISO-8859-1 [ISO-8859-1]. Terminated with $00.
+// $01   UTF-16 [UTF-16] encoded Unicode [UNICODE] with BOM. All
+// strings in the same frame SHALL have the same byteorder.
+// Terminated with $00 00.
+// $02   UTF-16BE [UTF-16] encoded Unicode [UNICODE] without BOM.
+// Terminated with $00 00.
+// $03   UTF-8 [UTF-8] encoded Unicode [UNICODE]. Terminated with $00.
 fn string_from_bytes(bytes: &Vec<u8>) -> (String, usize) {
   // https://stackoverflow.com/q/36251992/10326604
   if bytes[0] == 0xff && bytes[1] == 0xfe {

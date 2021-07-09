@@ -83,9 +83,14 @@ fn main() -> Result<()> {
       pos += description.1;
       let content = string_from_bytes(&bytes[pos..].to_vec());
       debug!("{:?}", content);
-    }
-
-    if idstr.starts_with("T") {
+    } else if idstr == "TXXX" {
+      let mut pos = 1;
+      let description = string_from_bytes(&bytes[pos..].to_vec());
+      debug!("{:?}", description);
+      pos += description.1;
+      let content = string_from_bytes(&bytes[pos..].to_vec());
+      debug!("{:?}", content);
+    } else if idstr.starts_with("T") {
       let text = string_from_bytes(&bytes[1..].to_vec());
       debug!("{:?}", text);
     }

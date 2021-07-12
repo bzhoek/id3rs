@@ -84,6 +84,22 @@ fn main() -> Result<()> {
       pos += description.1;
       let content = string_from_bytes(&bytes[pos..].to_vec());
       debug!("{:?}", content);
+    } else if idstr == "APIC" {
+      let mut pos = 1;
+      let mimetype = string_from_bytes(&bytes[pos..].to_vec());
+      debug!("{} {:?}", pos, mimetype);
+      pos += mimetype.1 + 1;
+      let description = string_from_bytes(&bytes[pos..].to_vec());
+      debug!("{:?}", description);
+      let size = bytes.len() - (pos + description.1);
+      debug!("{:?}", size);
+    } else if idstr == "COMM" {
+      let mut pos = 4;
+      let description = string_from_bytes(&bytes[pos..].to_vec());
+      debug!("{:?}", description);
+      pos += description.1;
+      let content = string_from_bytes(&bytes[pos..].to_vec());
+      debug!("{:?}", content);
     } else if idstr == "TXXX" {
       let mut pos = 1;
       let description = string_from_bytes(&bytes[pos..].to_vec());

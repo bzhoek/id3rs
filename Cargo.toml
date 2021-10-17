@@ -5,5 +5,7 @@ authors = ["Bas van der Hoek <bas@hoek.com>"]
 edition = "2018"
 
 [dependencies]
+nom = "6.0"
+
 log = "0.4.14"
 env_logger = "0.8.3"

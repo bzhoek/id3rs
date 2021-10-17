@@ -146,7 +146,7 @@ fn string_from_bytes(bytes: &Vec<u8>) -> (String, usize) {
   }
 }
 
-// only 7 bytes of each byte are significant
+// only 7 bits of each byte are significant
 fn syncsafe(bytes: &[u8]) -> u64 {
   bytes.iter().fold(0, |result, byte| { result << 7 | (*byte as u64) })
 }
@@ -175,7 +175,6 @@ mod tests {
     let result = string_from_bytes(&bytes);
     assert_eq!(("json".to_owned(), 5), result);
   }
-
 
   #[test]
   fn find_u16_eol() {

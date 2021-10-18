@@ -3,9 +3,9 @@ use std::str::from_utf8;
 use nom::bytes::streaming::{tag, take};
 use nom::combinator::map;
 use nom::IResult;
-use nom::multi::fold_many_m_n;
+use nom::multi::{fold_many_m_n, many_m_n};
 use nom::number::complete::be_u32;
-use nom::number::streaming::{be_u16, be_u8};
+use nom::number::streaming::{be_u16, be_u8, le_u16};
 use nom::sequence::tuple;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -21,6 +21,14 @@ pub struct Frame<'a> {
   id: &'a str,
   size: u32,
   flags: u16,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Text<'a> {
+  id: &'a str,
+  size: u32,
+  flags: u16,
+  text: String,
 }
 
 fn file_header(input: &[u8]) -> IResult<&[u8], Header> {
@@ -50,6 +58,25 @@ fn frame(input: &[u8]) -> IResult<&[u8], Frame> {
   Ok((input, Frame { id, size, flags }))
 }
 
+fn text_frame(input: &[u8]) -> IResult<&[u8], Text> {
+  let (input, (_, id, size, flags)) = tuple((
+    tag("T"),
+    map(
+      take(3u8),
+      |res| from_utf8(res).unwrap(),
+    ),
+    be_u32,
+    be_u16
+  ))(input)?;
+  let words = (size - 3) as usize / 2;
+  let (input, (_, text)) = tuple((
+    tag(b"\x01\xff\xfe"),
+    many_m_n(words, words, le_u16)
+  ))(input)?;
+  Ok((input, Text { id, size, flags, text: String::from_utf16(&*text).unwrap() }))
+}
+
+
 #[cfg(test)]
 mod tests {
   use std::io::Read;
@@ -69,7 +96,7 @@ mod tests {
     let mut tag = vec![0u8; header.tag_size as usize];
     file.read_exact(&mut tag).unwrap();
 
-    let (_, frame) = frame(&tag).ok().unwrap();
-    assert_eq!(frame, Frame { id: "TALB", size: 39, flags: 0 });
+    let (_next, frame) = text_frame(&tag).ok().unwrap();
+    assert_eq!(frame, Text { id: "ALB", size: 39, flags: 0, text: "The Shock Doctrine".to_string() });
   }
 }

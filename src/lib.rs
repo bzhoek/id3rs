@@ -23,6 +23,7 @@ enum Frames<'a> {
     id: &'a str,
     size: u32,
     flags: u16,
+    data: Vec<u8>
   },
   Text {
     id: &'a str,

@@ -1,9 +1,10 @@
 use std::str::from_utf8;
 
+use nom::branch::alt;
 use nom::bytes::streaming::{tag, take};
-use nom::combinator::map;
+use nom::combinator::{eof, map};
 use nom::IResult;
-use nom::multi::{fold_many_m_n, many_m_n};
+use nom::multi::{fold_many_m_n, many_m_n, many_till};
 use nom::number::complete::be_u32;
 use nom::number::streaming::{be_u16, be_u8, le_u16};
 use nom::sequence::tuple;
@@ -64,12 +65,13 @@ fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
   )(input)
 }
 
-fn frame(input: &[u8]) -> IResult<&[u8], Frames> {
+fn generic_frame(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, (id, size, flags)) = tuple((
     id_as_str,
     be_u32,
     be_u16
   ))(input)?;
+  let (input, _) = take(size)(input)?;
   Ok((input, Frames::Frame { id, size, flags }))
 }
 
@@ -91,7 +93,11 @@ fn text_frame(input: &[u8]) -> IResult<&[u8], Frames> {
   Ok((input, Frames::Text { id, size, flags, text: String::from_utf16(&*text).unwrap() }))
 }
 
-// fn frames(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {}
+fn frames(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
+  map(
+    many_till(alt((text_frame, generic_frame)), eof),
+    |(frames, _)| frames)(input)
+}
 
 
 #[cfg(test)]
@@ -110,10 +116,43 @@ mod tests {
     let (_, header) = file_header(&buffer).ok().unwrap();
     assert_eq!(header, Header { version: 3, revision: 0, flags: 0, tag_size: 46029 });
 
-    let mut tag = vec![0u8; header.tag_size as usize];
-    file.read_exact(&mut tag).unwrap();
+    let mut input = vec![0u8; header.tag_size as usize];
+    file.read_exact(&mut input).unwrap();
 
-    let (_next, frame) = text_frame(&tag).ok().unwrap();
+    let (_, result) = frames(&input).ok().unwrap();
+    assert_eq!(9, result.len());
+  }
+
+  #[test]
+  fn test_one_by_one() {
+    let filepath = "/Users/bas/OneDrive/PioneerDJ/techno/53. Semantic Drift  -- Dustin Zahn [1196743132].mp3";
+    let mut file = std::fs::File::open(filepath).unwrap();
+    let mut buffer = [0; 10];
+    file.read_exact(&mut buffer).unwrap();
+
+    let (_, header) = file_header(&buffer).ok().unwrap();
+    assert_eq!(header, Header { version: 3, revision: 0, flags: 0, tag_size: 46029 });
+
+    let mut input = vec![0u8; header.tag_size as usize];
+    file.read_exact(&mut input).unwrap();
+
+    let (input, frame) = text_frame(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "ALB", size: 39, flags: 0, text: "The Shock Doctrine".to_string() });
+    let (input, frame) = text_frame(&input).ok().unwrap();
+    assert_eq!(frame, Frames::Text { id: "PE1", size: 25, flags: 0, text: "Dustin Zahn".to_string() });
+    let (input, frame) = text_frame(&input).ok().unwrap();
+    assert_eq!(frame, Frames::Text { id: "IT2", size: 47, flags: 0, text: " 9a E  Semantic Drift ".to_string() });
+    let (input, frame) = generic_frame(&input).ok().unwrap();
+    assert_eq!(frame, Frames::Frame { id: "APIC", size: 45750, flags: 0 });
+    let (input, frame) = text_frame(&input).ok().unwrap();
+    assert_eq!(frame, Frames::Text { id: "IT3", size: 3, flags: 0, text: "".to_string() });
+    let (input, frame) = text_frame(&input).ok().unwrap();
+    assert_eq!(frame, Frames::Text { id: "BPM", size: 9, flags: 0, text: "128".to_string() });
+    let (input, frame) = generic_frame(&input).ok().unwrap();
+    assert_eq!(frame, Frames::Frame { id: "COMM", size: 22, flags: 0 });
+    let (input, frame) = text_frame(&input).ok().unwrap();
+    assert_eq!(frame, Frames::Text { id: "XXX", size: 21, flags: 0, text: "Rating\u{0}\u{feff}3".to_string() });
+    let (_input, frame) = text_frame(&input).ok().unwrap();
+    assert_eq!(frame, Frames::Text { id: "CON", size: 23, flags: 0, text: "techno/bup".to_string() });
   }
 }

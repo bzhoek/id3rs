@@ -13,7 +13,7 @@ pub struct Header {
   version: u8,
   revision: u8,
   flags: u8,
-  next: u64,
+  tag_size: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -31,7 +31,7 @@ fn file_header(input: &[u8]) -> IResult<&[u8], Header> {
       be_u8,
       fold_many_m_n(4, 4, be_u8, 0u64, |acc, byte| acc << 7 | (byte as u64))
     ))(input)?;
-  Ok((input, Header { version, revision, flags, next }))
+  Ok((input, Header { version, revision, flags, tag_size: next }))
 }
 
 fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
@@ -64,9 +64,12 @@ mod tests {
     file.read_exact(&mut buffer).unwrap();
 
     let (_, header) = file_header(&buffer).ok().unwrap();
-    assert_eq!(header, Header { version: 3, revision: 0, flags: 0, next: 46029 });
-    file.read_exact(&mut buffer).unwrap();
-    let (_, frame) = frame(&buffer).ok().unwrap();
-    assert_eq!(frame, Frame { id: "TALB", size:39, flags:0 });
+    assert_eq!(header, Header { version: 3, revision: 0, flags: 0, tag_size: 46029 });
+
+    let mut tag = vec![0u8; header.tag_size as usize];
+    file.read_exact(&mut tag).unwrap();
+
+    let (_, frame) = frame(&tag).ok().unwrap();
+    assert_eq!(frame, Frame { id: "TALB", size: 39, flags: 0 });
   }
 }

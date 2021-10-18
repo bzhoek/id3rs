@@ -17,6 +17,21 @@ pub struct Header {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+enum Frames<'a> {
+  Frame {
+    id: &'a str,
+    size: u32,
+    flags: u16,
+  },
+  Text {
+    id: &'a str,
+    size: u32,
+    flags: u16,
+    text: String,
+  },
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct Frame<'a> {
   id: &'a str,
   size: u32,
@@ -49,16 +64,16 @@ fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
   )(input)
 }
 
-fn frame(input: &[u8]) -> IResult<&[u8], Frame> {
+fn frame(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, (id, size, flags)) = tuple((
     id_as_str,
     be_u32,
     be_u16
   ))(input)?;
-  Ok((input, Frame { id, size, flags }))
+  Ok((input, Frames::Frame { id, size, flags }))
 }
 
-fn text_frame(input: &[u8]) -> IResult<&[u8], Text> {
+fn text_frame(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, (_, id, size, flags)) = tuple((
     tag("T"),
     map(
@@ -73,8 +88,10 @@ fn text_frame(input: &[u8]) -> IResult<&[u8], Text> {
     tag(b"\x01\xff\xfe"),
     many_m_n(words, words, le_u16)
   ))(input)?;
-  Ok((input, Text { id, size, flags, text: String::from_utf16(&*text).unwrap() }))
+  Ok((input, Frames::Text { id, size, flags, text: String::from_utf16(&*text).unwrap() }))
 }
+
+// fn frames(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {}
 
 
 #[cfg(test)]
@@ -97,6 +114,6 @@ mod tests {
     file.read_exact(&mut tag).unwrap();
 
     let (_next, frame) = text_frame(&tag).ok().unwrap();
-    assert_eq!(frame, Text { id: "ALB", size: 39, flags: 0, text: "The Shock Doctrine".to_string() });
+    assert_eq!(frame, Frames::Text { id: "ALB", size: 39, flags: 0, text: "The Shock Doctrine".to_string() });
   }
 }

@@ -6,19 +6,21 @@ use nom::sequence::tuple;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Header {
+  version: u8,
   revision: u8,
   flags: u8,
   next: u64,
 }
 
 fn file_header(input: &[u8]) -> IResult<&[u8], Header> {
-  let (input, (_, revision, flags, next)) = tuple(
+  let (input, (_, version, revision, flags, next)) = tuple(
     (tag("ID3"),
+      be_u8,
       be_u8,
       be_u8,
       fold_many_m_n(4, 4, be_u8, 0u64, |acc, byte| acc << 7 | (byte as u64))
     ))(input)?;
-  Ok((input, Header { revision, flags, next }))
+  Ok((input, Header { version, revision, flags, next }))
 }
 
 #[cfg(test)]
@@ -35,6 +37,9 @@ mod tests {
     file.read_exact(&mut buffer).unwrap();
 
     let (_, header) = file_header(&buffer).ok().unwrap();
-    assert_eq!(header, Header { revision: 3, flags: 0, next: 359 });
+    assert_eq!(header, Header { version: 3, revision: 0, flags: 0, next: 46029 });
+    file.read_exact(&mut buffer).unwrap();
+    // let (_, header) = file_header(&buffer).ok().unwrap();
+    // assert_eq!(header, Header { revision: 3, flags: 0, next: 359 });
   }
 }

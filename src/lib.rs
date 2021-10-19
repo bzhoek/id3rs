@@ -255,6 +255,29 @@ mod tests {
 
     let mut file = File::create("output.mp3").unwrap();
     file.write(b"ID3\x03\x00\x00").unwrap();
+    let vec = as_syncsafe(sum);
+    file.write(&*vec).unwrap();
+    for frame in tag.frames.iter() {
+      match frame {
+        Frames::Frame { id, size, flags, data } => {
+          file.write(id.as_ref());
+          file.write(&size.to_be_bytes());
+          file.write(&flags.to_be_bytes());
+          file.write(&data);
+        }
+        Frames::Text { id, size, flags, text } => {
+          let text: Vec<u8> = text.encode_utf16().map(|w| w.to_be_bytes()).flatten().collect();
+          let len = text.len() as u32 + 3;
+          file.write(b"T");
+          file.write(id.as_ref());
+          file.write(&len.to_be_bytes());
+          file.write(&flags.to_be_bytes());
+          file.write(b"\x01\xfe\xff");
+          file.write(&*text);
+        }
+        _ => {}
+      }
+    }
 
     let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67
     assert_eq!(sum, 66872);

@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate assert_matches;
+
 use std::str::from_utf8;
 
 use nom::branch::alt;
@@ -23,7 +26,7 @@ enum Frames<'a> {
     id: &'a str,
     size: u32,
     flags: u16,
-    data: Vec<u8>
+    data: &'a [u8],
   },
   Text {
     id: &'a str,
@@ -31,21 +34,6 @@ enum Frames<'a> {
     flags: u16,
     text: String,
   },
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Frame<'a> {
-  id: &'a str,
-  size: u32,
-  flags: u16,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Text<'a> {
-  id: &'a str,
-  size: u32,
-  flags: u16,
-  text: String,
 }
 
 fn file_header(input: &[u8]) -> IResult<&[u8], Header> {
@@ -72,8 +60,8 @@ fn generic_frame(input: &[u8]) -> IResult<&[u8], Frames> {
     be_u32,
     be_u16
   ))(input)?;
-  let (input, _) = take(size)(input)?;
-  Ok((input, Frames::Frame { id, size, flags }))
+  let (input, data) = take(size)(input)?;
+  Ok((input, Frames::Frame { id, size, flags, data }))
 }
 
 fn text_frame(input: &[u8]) -> IResult<&[u8], Frames> {
@@ -103,14 +91,20 @@ fn frames(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
 
 #[cfg(test)]
 mod tests {
+  use std::fs::File;
   use std::io::Read;
 
   use super::*;
 
-  #[test]
-  fn test_open() {
+  fn get_test_file() -> File {
     let filepath = "/Users/bas/OneDrive/PioneerDJ/techno/53. Semantic Drift  -- Dustin Zahn [1196743132].mp3";
-    let mut file = std::fs::File::open(filepath).unwrap();
+    let file = std::fs::File::open(filepath).unwrap();
+    file
+  }
+
+  #[test]
+  fn test_frames() {
+    let mut file = get_test_file();
     let mut buffer = [0; 10];
     file.read_exact(&mut buffer).unwrap();
 
@@ -125,9 +119,8 @@ mod tests {
   }
 
   #[test]
-  fn test_one_by_one() {
-    let filepath = "/Users/bas/OneDrive/PioneerDJ/techno/53. Semantic Drift  -- Dustin Zahn [1196743132].mp3";
-    let mut file = std::fs::File::open(filepath).unwrap();
+  fn test_frames_individually() {
+    let mut file = get_test_file();
     let mut buffer = [0; 10];
     file.read_exact(&mut buffer).unwrap();
 
@@ -144,13 +137,19 @@ mod tests {
     let (input, frame) = text_frame(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "IT2", size: 47, flags: 0, text: " 9a E  Semantic Drift ".to_string() });
     let (input, frame) = generic_frame(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Frame { id: "APIC", size: 45750, flags: 0 });
+    assert_matches!(frame, Frames::Frame{ id: "APIC", size: 45750, flags: _, data: _} => {
+      // TODO: compare actual picture
+      // if let Frames::Frame { id, size, flags, data } = frame {
+      //   let mut out = File::create("APIC.bin").unwrap();
+      //   out.write(data).unwrap();
+      // }
+    });
     let (input, frame) = text_frame(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "IT3", size: 3, flags: 0, text: "".to_string() });
     let (input, frame) = text_frame(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "BPM", size: 9, flags: 0, text: "128".to_string() });
     let (input, frame) = generic_frame(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Frame { id: "COMM", size: 22, flags: 0 });
+    assert_matches!(frame, Frames::Frame{ id: "COMM", size: 22, flags: _, data: _});
     let (input, frame) = text_frame(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "XXX", size: 21, flags: 0, text: "Rating\u{0}\u{feff}3".to_string() });
     let (_input, frame) = text_frame(&input).ok().unwrap();

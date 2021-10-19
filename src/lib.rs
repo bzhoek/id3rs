@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::str::from_utf8;
 
-use log::{debug, error, info, LevelFilter, warn};
+use log::{debug, LevelFilter};
 use nom::branch::alt;
 use nom::bytes::streaming::{tag, take};
 use nom::combinator::{eof, map};
@@ -162,7 +162,7 @@ impl ID3Tag {
   }
 
   pub fn write(&self, target: &str) -> Result<()> {
-    let mut file = File::create(target)?;
+    let _file = File::create(target)?;
     Ok(())
   }
 
@@ -212,12 +212,11 @@ pub fn log_init() {
 
 #[cfg(test)]
 mod tests {
+  use std::convert::TryInto;
   use std::fs::File;
   use std::io::Read;
 
   use assert_matches::assert_matches;
-  use env_logger::Env;
-  use nom::number::complete::double;
 
   use super::*;
 
@@ -234,8 +233,8 @@ mod tests {
     let tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
     let sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
-        Frames::Frame { id, size, flags, data } => (10 + size),
-        Frames::Text { id, size, flags, text } => (10 + 1 + size),
+        Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
+        Frames::Text { id: _, size, flags: _, text: _ } => (10 + size),
         Frames::Padding { size } => (0 + size),
       });
 
@@ -249,14 +248,46 @@ mod tests {
 
     let sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
-        Frames::Frame { id, size, flags, data } => (10 + size),
-        Frames::Text { id, size, flags, text } => (10 + 1 + text.len() as u32),
+        Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
+        Frames::Text { id: _, size: _, flags: _, text } => (10 + 1 + text.len() as u32),
         Frames::Padding { size } => (0 + size),
       });
 
-    let double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67
-    assert_eq!(sum, 66872 - double_utf16);
+    let mut file = File::create("output.mp3").unwrap();
+    file.write(b"ID3\x03\x00\x00").unwrap();
+
+    let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67
+    assert_eq!(sum, 66872);
   }
+
+  fn as_syncsafe(total: u32) -> Vec<u8> {
+    let mut result: Vec<u8> = Vec::new();
+    let mut remaining = total;
+    for _byte in total.to_be_bytes() {
+      result.insert(0, (remaining & 0b01111111) as u8);
+      remaining = remaining >> 7;
+    }
+    result
+  }
+
+  fn as_syncsafe_bytes(total: u32) -> u32 {
+    let vec = as_syncsafe(total);
+    let (bytes, _) = vec.as_slice().split_at(std::mem::size_of::<u32>());
+    u32::from_be_bytes(bytes.try_into().unwrap())
+  }
+
+  #[test]
+  pub fn sync() {
+    log_init();
+
+    assert_eq!(as_syncsafe_bytes(66872), 0x040A38);
+    assert_eq!(as_syncsafe_bytes(0b00001111111_1111111_1111111_1111111u32), 0b01111111011111110111111101111111u32);
+
+    assert_eq!(as_syncsafe(0b1111111_1111111u32), vec![0, 0, 127, 127]);
+    assert_eq!(as_syncsafe(0b1111111_1111111_1111111u32), vec![0, 127, 127, 127]);
+    assert_eq!(as_syncsafe(0b00001111111_1111111_1111111_1111111u32), vec![127, 127, 127, 127]);
+  }
+
 
   #[test]
   pub fn test_class_text() {

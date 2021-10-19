@@ -1,9 +1,7 @@
-#[macro_use]
-extern crate assert_matches;
-
 use std::io::Read;
 use std::str::from_utf8;
 
+use log::{debug, error, info, LevelFilter, warn};
 use nom::branch::alt;
 use nom::bytes::streaming::{tag, take};
 use nom::combinator::{eof, map};
@@ -43,6 +41,7 @@ pub enum Frames {
 fn file_header(input: &[u8]) -> IResult<&[u8], Header> {
   let (input, (_, version, revision, flags, next))
     = tuple((tag("ID3"), be_u8, be_u8, be_u8, syncsafe))(input)?;
+  debug!("tag size {}", next);
   Ok((input, Header { version, revision, flags, tag_size: next }))
 }
 
@@ -61,6 +60,7 @@ fn syncsafe(input: &[u8]) -> IResult<&[u8], u32> {
 fn generic_frame(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, (id, size, flags)) =
     tuple((id_as_str, syncsafe, be_u16))(input)?;
+  debug!("frame {} {}", id, size);
   let (input, data) = take(size)(input)?;
   Ok((input, Frames::Frame { id: id.to_string(), size, flags, data: data.into() }))
 }
@@ -72,7 +72,7 @@ fn text_header(input: &[u8]) -> IResult<&[u8], (&[u8], &str, u32, u16)> {
       take(3u8),
       |res| from_utf8(res).unwrap(),
     ),
-    be_u32,
+    syncsafe,
     be_u16
   ))(input)
 }
@@ -84,6 +84,7 @@ fn text_frame_utf16(input: &[u8]) -> IResult<&[u8], Frames> {
       tag(b"\x01\xff\xfe"),
       count(le_u16, (size - 3) as usize / 2)
     ))(input)?;
+  debug!("utf16 {} {}", id, size);
   Ok((input, Frames::Text { id: id.to_string(), size, flags, text: String::from_utf16(&*text).unwrap() }))
 }
 
@@ -94,6 +95,7 @@ fn text_frame_utf8(input: &[u8]) -> IResult<&[u8], Frames> {
       alt((tag(b"\x00"), tag(b"\x03"))),
       count(be_u8, (size - 1) as usize)
     ))(input)?;
+  debug!("utf8 {} {}", id, size);
   Ok((input, Frames::Text { id: id.to_string(), size, flags, text: String::from_utf8(text).unwrap().replace("\u{0}", "\n") }))
 }
 
@@ -197,22 +199,31 @@ impl ID3Tag {
   }
 }
 
+pub fn log_init() {
+  let _ = env_logger::builder().is_test(true)
+    .filter_level(LevelFilter::Debug)
+    .try_init();
+}
+
 #[cfg(test)]
 mod tests {
   use std::fs::File;
   use std::io::Read;
 
+  use assert_matches::assert_matches;
+  use env_logger::Env;
+
   use super::*;
 
   #[test]
   pub fn test_class() {
-    let tag = ID3Tag::read("13. Oil Rigger -- Regent [1506153642].mp3").unwrap();
+    let tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
     assert_eq!(tag.frames.len(), 17);
   }
 
   #[test]
   pub fn test_class_text() {
-    let tag = ID3Tag::read("13. Oil Rigger -- Regent [1506153642].mp3").unwrap();
+    let tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
 
     assert_eq!(tag.text("IT2"), Some("Oil Rigger".to_string()));
     assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
@@ -222,15 +233,29 @@ mod tests {
     assert_eq!(tag.artist(), Some("Regent".to_string()));
   }
 
+  #[test]
+  pub fn test_library() {
+    log_init();
+    let tag = ID3Tag::read("/Users/bas/Music/PioneerDJ/techno/13. Oil Rigger -- Regent [1506153642].mp3").unwrap();
+
+    assert_eq!(tag.text("IT2"), Some("Oil Rigger".to_string()));
+    assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
+    assert_eq!(tag.extended_text("OriginalTitle"), None);
+    assert_eq!(tag.title(), Some("Oil Rigger".to_string()));
+    assert_eq!(tag.subtitle(), Some("".to_string()));
+    assert_eq!(tag.key(), Some("4A".to_string()));
+    assert_eq!(tag.artist(), Some("Regent".to_string()));
+  }
+
   fn get_test_file() -> File {
-    let filepath = "13. Oil Rigger -- Regent [1506153642].mp3";
+    let filepath = "Oil Rigger -- Regent [1506153642].mp3";
     let file = std::fs::File::open(filepath).unwrap();
     file
   }
 
   #[test]
   fn test_energy() {
-    assert_eq!(find_energy("13. Oil Rigger -- Regent [1506153642].mp3"), Some("EnergyLevel\n6".to_string()));
+    assert_eq!(find_energy("Oil Rigger -- Regent [1506153642].mp3"), Some("EnergyLevel\n6".to_string()));
   }
 
   #[test]
@@ -251,6 +276,8 @@ mod tests {
 
   #[test]
   fn test_frames_individually() {
+    log_init();
+
     let mut file = get_test_file();
     let mut buffer = [0; 10];
     file.read_exact(&mut buffer).unwrap();

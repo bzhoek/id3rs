@@ -1,5 +1,5 @@
 
-[Alternative](https://github.com/polyfloyd/rust-id3) that does not read all frames consistently, particularly the Mixed in Key Energy field.
+[Alternative](https://github.com/polyfloyd/rust-id3) that does not read all frames consistently, particularly the Mixed in Key `EnergyLevel` field.
 
 Reference documentation
 * [ID3 tag version 2.3.0](https://id3.org/id3v2.3.0)

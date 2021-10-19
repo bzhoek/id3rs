@@ -1,4 +1,5 @@
-use std::io::Read;
+use std::fs::File;
+use std::io::{Read, Write};
 use std::str::from_utf8;
 
 use log::{debug, error, info, LevelFilter, warn};
@@ -7,7 +8,6 @@ use nom::bytes::streaming::{tag, take};
 use nom::combinator::{eof, map};
 use nom::IResult;
 use nom::multi::{count, fold_many_m_n, many_till};
-use nom::number::complete::be_u32;
 use nom::number::streaming::{be_u16, be_u8, le_u16};
 use nom::sequence::tuple;
 
@@ -161,6 +161,11 @@ impl ID3Tag {
     Ok(ID3Tag { filepath: filepath.to_string(), frames: result })
   }
 
+  pub fn write(&self, target: &str) -> Result<()> {
+    let mut file = File::create(target)?;
+    Ok(())
+  }
+
   pub fn text(&self, identifier: &str) -> Option<String> {
     self.frames.iter().find(|f| match f {
       Frames::Text { id, size: _, flags: _, text: _ } => (id == identifier),
@@ -212,6 +217,7 @@ mod tests {
 
   use assert_matches::assert_matches;
   use env_logger::Env;
+  use nom::number::complete::double;
 
   use super::*;
 
@@ -219,6 +225,37 @@ mod tests {
   pub fn test_class() {
     let tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
     assert_eq!(tag.frames.len(), 17);
+  }
+
+  #[test]
+  pub fn test_tag() {
+    log_init();
+
+    let tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
+    let sum = tag.frames.iter()
+      .fold(0u32, |sum, frame| sum + match frame {
+        Frames::Frame { id, size, flags, data } => (10 + size),
+        Frames::Text { id, size, flags, text } => (10 + 1 + size),
+        Frames::Padding { size } => (0 + size),
+      });
+
+    // [2021-10-19T18:21:38Z DEBUG id3_rs] utf16 PE1 15
+    // [2021-10-19T18:21:38Z DEBUG id3_rs] utf16 IT2 23
+    // [2021-10-19T18:21:38Z DEBUG id3_rs] utf16 ALB 11
+    // [2021-10-19T18:21:38Z DEBUG id3_rs] utf16 IT3 3
+    // [2021-10-19T18:21:38Z DEBUG id3_rs] utf16 CON 15
+
+    assert_eq!(sum, 66872);
+
+    let sum = tag.frames.iter()
+      .fold(0u32, |sum, frame| sum + match frame {
+        Frames::Frame { id, size, flags, data } => (10 + size),
+        Frames::Text { id, size, flags, text } => (10 + 1 + text.len() as u32),
+        Frames::Padding { size } => (0 + size),
+      });
+
+    let double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67
+    assert_eq!(sum, 66872 - double_utf16);
   }
 
   #[test]

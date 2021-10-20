@@ -164,15 +164,16 @@ impl ID3Tag {
 
   pub fn write(&self, target: &str) -> Result<()> {
     let mut file = File::create(target)?;
-    file.write(b"ID3\x03\x00\x00").unwrap();
+    file.write(b"ID3\x03\x00\x00")?;
     let vec = as_syncsafe(self.sum());
-    file.write(&*vec).unwrap();
+    file.write(&*vec)?;
 
     for frame in self.frames.iter() {
       match frame {
         Frames::Frame { id, size, flags, data } => {
           file.write(id.as_ref())?;
-          file.write(&size.to_be_bytes())?;
+          let vec = as_syncsafe(*size);
+          file.write(&*vec)?;
           file.write(&flags.to_be_bytes())?;
           file.write(&data)?;
         }
@@ -181,7 +182,7 @@ impl ID3Tag {
           let len = text.len() as u32 + 3;
           file.write(b"T")?;
           file.write(id.as_ref())?;
-          file.write(&len.to_be_bytes())?;
+          file.write(&len.to_be_bytes())?; // todo: also as syncsafe?
           file.write(&flags.to_be_bytes())?;
           file.write(b"\x01\xff\xfe")?;
           file.write(&*text)?;

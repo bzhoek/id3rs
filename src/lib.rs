@@ -9,6 +9,7 @@ use nom::bytes::streaming::{tag, take};
 use nom::combinator::{eof, map};
 use nom::IResult;
 use nom::multi::{count, fold_many_m_n, many_till};
+use nom::number::complete::be_u32;
 use nom::number::streaming::{be_u16, be_u8, le_u16};
 use nom::sequence::tuple;
 
@@ -118,6 +119,59 @@ fn all_frames(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
     |(frames, _)| frames)(input)
 }
 
+fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
+  map(
+    many_till(
+      alt((padding, text_frame_v23, generic_frame_v23)), eof),
+    |(frames, _)| frames)(input)
+}
+
+fn text_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+  alt((text_frame_utf16_v23, text_frame_utf8_v23))(input)
+}
+
+fn text_frame_utf8_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+  let (input, (_, id, size, flags)) = text_header_v23(input)?;
+  let (input, (_, text)) =
+    tuple((
+      alt((tag(b"\x00"), tag(b"\x03"))),
+      count(be_u8, (size - 1) as usize)
+    ))(input)?;
+  debug!("utf8 {} {}", id, size);
+  Ok((input, Frames::Text { id: id.to_string(), size, flags, text: String::from_utf8(text).unwrap().replace("\u{0}", "\n") }))
+}
+
+fn text_frame_utf16_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+  let (input, (_, id, size, flags)) = text_header_v23(input)?;
+  let (input, (_, text)) =
+    tuple((
+      tag(b"\x01\xff\xfe"),
+      count(le_u16, (size - 3) as usize / 2)
+    ))(input)?;
+  debug!("utf16 {} {}", id, size);
+  Ok((input, Frames::Text { id: id.to_string(), size, flags, text: String::from_utf16(&*text).unwrap() }))
+}
+
+fn text_header_v23(input: &[u8]) -> IResult<&[u8], (&[u8], &str, u32, u16)> {
+  tuple((
+    tag("T"),
+    map(
+      take(3u8),
+      |res| from_utf8(res).unwrap(),
+    ),
+    be_u32,
+    be_u16
+  ))(input)
+}
+
+fn generic_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+  let (input, (id, size, flags)) =
+    tuple((id_as_str, be_u32, be_u16))(input)?;
+  debug!("frame {} {}", id, size);
+  let (input, data) = take(size)(input)?;
+  Ok((input, Frames::Frame { id: id.to_string(), size, flags, data: data.into() }))
+}
+
 pub fn find_energy(file: &str) -> Option<String> {
   let mut file = std::fs::File::open(file).unwrap();
 
@@ -153,7 +207,11 @@ impl ID3Tag {
     let mut input = vec![0u8; header.tag_size as usize];
     file.read_exact(&mut input).unwrap();
 
-    let (_, result) = all_frames(&input).map_err(|_| "Frames error")?;
+    let (_, result) = if header.version == 3 {
+      all_frames_v23(&input).map_err(|_| "Frames error")?
+    } else {
+      all_frames(&input).map_err(|_| "Frames error")?
+    };
 
     Ok(ID3Tag { filepath: filepath.to_string(), frames: result })
   }
@@ -385,6 +443,14 @@ mod tests {
   }
 
   #[test]
+  pub fn test_cries() {
+    log_init();
+
+    let tag = ID3Tag::read("0. Cries -- Glowal [608253472].mp3").unwrap();
+    assert_eq!(tag.title(), Some(" 8a E  Cries".to_string()));
+  }
+
+  #[test]
   pub fn test_change_inplace() {
     log_init();
 
@@ -406,7 +472,6 @@ mod tests {
     assert_eq!(as_syncsafe(0b00001111111_1111111_1111111_1111111u32), vec![127, 127, 127, 127]);
   }
 
-
   #[test]
   pub fn test_class_text() {
     let tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
@@ -422,7 +487,7 @@ mod tests {
   #[test]
   pub fn test_library() {
     log_init();
-    let tag = ID3Tag::read("/Users/bas/Music/PioneerDJ/techno/13. Oil Rigger -- Regent [1506153642].mp3").unwrap();
+    let tag = ID3Tag::read("13. Oil Rigger -- Regent [1506153642].mp3").unwrap();
 
     assert_eq!(tag.text("IT2"), Some("Oil Rigger".to_string()));
     assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));

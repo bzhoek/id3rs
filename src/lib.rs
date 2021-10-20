@@ -86,8 +86,9 @@ fn text_frame_utf16(input: &[u8]) -> IResult<&[u8], Frames> {
       tag(b"\x01\xff\xfe"),
       count(le_u16, (size - 3) as usize / 2)
     ))(input)?;
-  debug!("utf16 {} {}", id, size);
-  Ok((input, Frames::Text { id: id.to_string(), size, flags, text: String::from_utf16(&*text).unwrap() }))
+  let text = String::from_utf16(&*text).unwrap();
+  debug!("utf16 {} {} {}", id, size, text);
+  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
 }
 
 fn text_frame_utf8(input: &[u8]) -> IResult<&[u8], Frames> {
@@ -97,8 +98,9 @@ fn text_frame_utf8(input: &[u8]) -> IResult<&[u8], Frames> {
       alt((tag(b"\x00"), tag(b"\x03"))),
       count(be_u8, (size - 1) as usize)
     ))(input)?;
-  debug!("utf8 {} {}", id, size);
-  Ok((input, Frames::Text { id: id.to_string(), size, flags, text: String::from_utf8(text).unwrap().replace("\u{0}", "\n") }))
+  let text = String::from_utf8(text).unwrap().replace("\u{0}", "\n");
+  debug!("utf8 {} {} {}", id, size, text);
+  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
 }
 
 fn text_frame(input: &[u8]) -> IResult<&[u8], Frames> {
@@ -137,8 +139,9 @@ fn text_frame_utf8_v23(input: &[u8]) -> IResult<&[u8], Frames> {
       alt((tag(b"\x00"), tag(b"\x03"))),
       count(be_u8, (size - 1) as usize)
     ))(input)?;
-  debug!("utf8 {} {}", id, size);
-  Ok((input, Frames::Text { id: id.to_string(), size, flags, text: String::from_utf8(text).unwrap().replace("\u{0}", "\n") }))
+  let text = String::from_utf8(text).unwrap().replace("\u{0}", "\n");
+  debug!("utf8v23 {} {} {}", id, size, text);
+  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
 }
 
 fn text_frame_utf16_v23(input: &[u8]) -> IResult<&[u8], Frames> {
@@ -148,8 +151,10 @@ fn text_frame_utf16_v23(input: &[u8]) -> IResult<&[u8], Frames> {
       tag(b"\x01\xff\xfe"),
       count(le_u16, (size - 3) as usize / 2)
     ))(input)?;
-  debug!("utf16 {} {}", id, size);
-  Ok((input, Frames::Text { id: id.to_string(), size, flags, text: String::from_utf16(&*text).unwrap() }))
+  let text = String::from_utf16(&*text).unwrap()
+    .replace("\u{0000}", "\n").replace("\u{feff}", "");
+  debug!("utf16v23 {} {} {}", id, size, text);
+  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
 }
 
 fn text_header_v23(input: &[u8]) -> IResult<&[u8], (&[u8], &str, u32, u16)> {
@@ -438,8 +443,16 @@ mod tests {
     log_init();
 
     let mut tag = ID3Tag::read("13. Oil Rigger -- Regent [1506153642] 2.mp3").unwrap();
-    tag.set_extended_text("OriginalText", "Oil Rigger");
-    assert_eq!(tag.extended_text("OriginalText"), Some("Oil Rigger".to_string()));
+    tag.set_extended_text("OriginalTitle", "Oil Rigger");
+    assert_eq!(tag.extended_text("OriginalTitle"), Some("Oil Rigger".to_string()));
+  }
+
+  #[test]
+  pub fn test_23_extended_text() {
+    log_init();
+
+    let mut tag = ID3Tag::read("30. London Bass -- Mr.diamond [1393177122].mp3").unwrap();
+    assert_eq!(tag.extended_text("OriginalTitle"), Some("London Bass".to_string()));
   }
 
   #[test]

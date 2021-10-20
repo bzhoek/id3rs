@@ -148,7 +148,6 @@ pub struct ID3Tag {
 }
 
 impl ID3Tag {
-
   pub fn read(filepath: &str) -> Result<ID3Tag> {
     let (mut file, header) = Self::read_header(filepath)?;
     let mut input = vec![0u8; header.tag_size as usize];
@@ -287,15 +286,15 @@ impl ID3Tag {
     self.frames.push(Frames::Text { id: id3.to_string(), size: 0, flags: 0, text: change.to_string() })
   }
 
-  fn set_extended_text(&mut self, description: &str, value: &str) {
+  pub fn set_extended_text(&mut self, description: &str, value: &str) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
         Frames::Text { id, size: _, flags: _, text } => id == "XXX" && text.starts_with(description),
         _ => false
       }) {
       self.frames.remove(index);
-      self.frames.push(Frames::Text { id: "XXX".to_string(), size: 0, flags: 0, text: format!("{}\n{}", description, value) })
     }
+    self.frames.push(Frames::Text { id: "XXX".to_string(), size: 0, flags: 0, text: format!("{}\n{}", description, value) })
   }
 }
 
@@ -340,7 +339,7 @@ mod tests {
   pub fn test_sum() {
     log_init();
 
-    let mut tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
+    let tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
     let sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
         Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
@@ -374,6 +373,15 @@ mod tests {
     tag.set_title("Roil Igger");
     tag.set_extended_text("EnergyLevel", "99");
     tag.write("output.mp3").unwrap();
+  }
+
+  #[test]
+  pub fn test_extended_text() {
+    log_init();
+
+    let mut tag = ID3Tag::read("13. Oil Rigger -- Regent [1506153642] 2.mp3").unwrap();
+    tag.set_extended_text("OriginalText", "Oil Rigger");
+    assert_eq!(tag.extended_text("OriginalText"), Some("Oil Rigger".to_string()));
   }
 
   #[test]

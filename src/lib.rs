@@ -234,7 +234,7 @@ impl ID3Tag {
 
     let mut out = if self.filepath == target {
       let mut tmp = File::create("stream.tmp")?;
-      file.seek(SeekFrom::Start(header.tag_size as u64))?;
+      file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
       std::io::copy(&mut file, &mut tmp)?;
       OpenOptions::new().write(true).open(&self.filepath)?
     } else {
@@ -290,7 +290,7 @@ impl ID3Tag {
       let mut tmp = File::open("stream.tmp")?;
       std::io::copy(&mut tmp, &mut out)?;
     } else {
-      file.seek(SeekFrom::Start(header.tag_size as u64))?;
+      file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
       std::io::copy(&mut file, &mut out)?;
     };
 
@@ -461,6 +461,14 @@ mod tests {
 
     let tag = ID3Tag::read("0. Cries -- Glowal [608253472].mp3").unwrap();
     assert_eq!(tag.title(), Some(" 8a E  Cries".to_string()));
+  }
+
+  #[test]
+  pub fn test_honey() {
+    log_init();
+
+    // 54495432 0000001B 000001FF FE200038 00610020 00460020 00200048 006F 006E 00650079 006F006E 00650079 002000FF FBE0
+    let tag = ID3Tag::read("/Users/bas/OneDrive/PioneerDJ/discover/DW202141/7. Bleak -- Maenad Veyl [651659502].mp3").unwrap();
   }
 
   #[test]

@@ -149,11 +149,7 @@ pub struct ID3Tag {
 
 impl ID3Tag {
   pub fn read(filepath: &str) -> Result<ID3Tag> {
-    let mut file = std::fs::File::open(filepath)?;
-    let mut buffer = [0; 10];
-    file.read_exact(&mut buffer).unwrap();
-    let (_, header) = file_header(&buffer).map_err(|_| "Header error")?;
-
+    let (mut file, header) = Self::read_header(filepath)?;
     let mut input = vec![0u8; header.tag_size as usize];
     file.read_exact(&mut input).unwrap();
 
@@ -162,7 +158,21 @@ impl ID3Tag {
     Ok(ID3Tag { filepath: filepath.to_string(), frames: result })
   }
 
+  fn read_header(filepath: &str) -> Result<(File, Header)> {
+    let mut file = std::fs::File::open(filepath)?;
+    let mut buffer = [0; 10];
+    file.read_exact(&mut buffer).unwrap();
+    let (_, header) = file_header(&buffer).map_err(|_| "Header error")?;
+    Ok((file, header))
+  }
+
   pub fn write(&self, target: &str) -> Result<()> {
+    let (mut file, header) = Self::read_header(&*self.filepath)?;
+    file.seek(SeekFrom::Start(header.tag_size as u64))?;
+
+    let mut tmp = File::create("stream.tmp")?;
+    std::io::copy(&mut file, &mut tmp)?;
+
     let mut out = File::create(target)?;
     out.write(b"ID3\x04\x00\x00FAKE")?;
 
@@ -209,12 +219,7 @@ impl ID3Tag {
     out.write(&*vec)?;
     out.seek(SeekFrom::Start(size))?;
 
-    let mut file = std::fs::File::open(self.filepath.to_string())?;
-    let mut buffer = [0; 10];
-    file.read_exact(&mut buffer).unwrap();
-    let (_, header) = file_header(&buffer).map_err(|_| "Header error")?;
     file.seek(SeekFrom::Start(header.tag_size as u64))?;
-
     std::io::copy(&mut file, &mut out)?;
 
     Ok(())

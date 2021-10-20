@@ -178,15 +178,28 @@ impl ID3Tag {
           out.write(&data)?;
         }
         Frames::Text { id, size: _, flags, text } => {
-          let text: Vec<u8> = text.encode_utf16().map(|w| w.to_le_bytes()).flatten().collect();
-          let len = text.len() as u32 + 3;
-          let vec = as_syncsafe(len);
-          out.write(b"T")?;
-          out.write(id.as_ref())?;
-          out.write(&*vec)?;
-          out.write(&flags.to_be_bytes())?;
-          out.write(b"\x01\xff\xfe")?;
-          out.write(&*text)?;
+          if id == "XXX" {
+            let string = text.replace("\n", "\u{0}");
+            let text: &[u8] = string.as_bytes();
+            let len = text.len() as u32 + 1;
+            let vec = as_syncsafe(len);
+            out.write(b"T")?;
+            out.write(id.as_ref())?;
+            out.write(&*vec)?;
+            out.write(&flags.to_be_bytes())?;
+            out.write(b"\x03")?;
+            out.write(&*text)?;
+          } else {
+            let text: Vec<u8> = text.encode_utf16().map(|w| w.to_le_bytes()).flatten().collect();
+            let len = text.len() as u32 + 3;
+            let vec = as_syncsafe(len);
+            out.write(b"T")?;
+            out.write(id.as_ref())?;
+            out.write(&*vec)?;
+            out.write(&flags.to_be_bytes())?;
+            out.write(b"\x01\xff\xfe")?;
+            out.write(&*text)?;
+          }
         }
         _ => {}
       }

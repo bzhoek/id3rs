@@ -164,9 +164,7 @@ impl ID3Tag {
 
   pub fn write(&self, target: &str) -> Result<()> {
     let mut out = File::create(target)?;
-    out.write(b"ID3\x04\x00\x00")?;
-    let vec = as_syncsafe(self.sum());
-    out.write(&*vec)?;
+    out.write(b"ID3\x04\x00\x00FAKE")?;
 
     for frame in self.frames.iter() {
       match frame {
@@ -204,6 +202,12 @@ impl ID3Tag {
         _ => {}
       }
     }
+
+    let size = out.stream_position()?;
+    let vec = as_syncsafe(size as u32);
+    out.seek(SeekFrom::Start(6))?;
+    out.write(&*vec)?;
+    out.seek(SeekFrom::Start(size))?;
 
     let mut file = std::fs::File::open(self.filepath.to_string())?;
     let mut buffer = [0; 10];
@@ -251,15 +255,6 @@ impl ID3Tag {
 
   pub fn artist(&self) -> Option<String> {
     self.text("PE1")
-  }
-
-  fn sum(&self) -> u32 {
-    self.frames.iter()
-      .fold(0u32, |sum, frame| sum + match frame {
-        Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
-        Frames::Text { id: _, size: _, flags: _, text } => (10 + 1 + text.len() as u32),
-        Frames::Padding { size } => (0 + size),
-      })
   }
 }
 
@@ -320,11 +315,16 @@ mod tests {
 
     assert_eq!(sum, 66872);
 
+    let _sum = tag.frames.iter()
+      .fold(0u32, |sum, frame| sum + match frame {
+        Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
+        Frames::Text { id: _, size: _, flags: _, text } => (10 + 1 + text.len() as u32),
+        Frames::Padding { size } => (0 + size),
+      });
 
     tag.write("output.mp3").unwrap();
 
     let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67
-    assert_eq!(sum, 66872);
   }
 
   #[test]

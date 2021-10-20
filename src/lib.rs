@@ -3,7 +3,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::str::from_utf8;
 
-use log::{debug, LevelFilter};
+use log::{debug, info, LevelFilter};
 use nom::branch::alt;
 use nom::bytes::streaming::{tag, take};
 use nom::combinator::{eof, map};
@@ -229,6 +229,34 @@ impl ID3Tag {
     Ok((file, header))
   }
 
+  pub fn fix_copy_error_with_padding(filepath: &str) -> Result<()> {
+    let mut file = OpenOptions::new().read(true).write(true).open(filepath)?;
+    let mut buffer = [0; 10];
+    file.read_exact(&mut buffer).unwrap();
+
+    let (_, header) = file_header(&buffer).map_err(|_| "Header error")?;
+    assert_eq!(header.version, 4);
+
+    let mut buffer = [0; 3];
+    file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
+    file.read_exact(&mut buffer)?;
+    if &buffer == b"\xFF\xFB\xE0" {
+      debug!("Checking padding {}...", filepath);
+      file.seek(SeekFrom::Start(header.tag_size as u64))?;
+      let mut buffer = [0; 10];
+      file.read_exact(&mut buffer)?;
+      if &buffer != b"\0\0\0\0\0\0\0\0\0\0" {
+        info!("Padding {}...", filepath);
+        file.seek(SeekFrom::Start(header.tag_size as u64))?;
+        let padding: [u8; 10] = [0; 10];
+        file.write(padding.as_ref())?;
+        file.sync_all()?
+      }
+    }
+
+    Ok(())
+  }
+
   pub fn write(&self, target: &str) -> Result<()> {
     let (mut file, header) = Self::read_header(&*self.filepath)?;
 
@@ -451,7 +479,7 @@ mod tests {
   pub fn test_23_extended_text() {
     log_init();
 
-    let mut tag = ID3Tag::read("30. London Bass -- Mr.diamond [1393177122].mp3").unwrap();
+    let tag = ID3Tag::read("30. London Bass -- Mr.diamond [1393177122].mp3").unwrap();
     assert_eq!(tag.extended_text("OriginalTitle"), Some("London Bass".to_string()));
   }
 
@@ -464,11 +492,14 @@ mod tests {
   }
 
   #[test]
-  pub fn test_honey() {
+  pub fn test_padding_fix() {
     log_init();
 
-    // 54495432 0000001B 000001FF FE200038 00610020 00460020 00200048 006F 006E 00650079 006F006E 00650079 002000FF FBE0
-    let tag = ID3Tag::read("/Users/bas/OneDrive/PioneerDJ/discover/DW202141/7. Bleak -- Maenad Veyl [651659502].mp3").unwrap();
+    let file = "/Users/bas/OneDrive/PioneerDJ/discover/DW202050/16. Amber Decay  -- Kangding Ray [1261347082].mp3";
+    match ID3Tag::read(file) {
+      Ok(_) => {}
+      Err(_) => { ID3Tag::fix_copy_error_with_padding(file).unwrap(); }
+    }
   }
 
   #[test]
@@ -544,6 +575,31 @@ mod tests {
 
     let (_, result) = all_frames(&input).ok().unwrap();
     assert_eq!(17, result.len());
+  }
+
+  #[test]
+  fn test_offset_fix() {
+    let filepath = "/Users/bas/OneDrive/PioneerDJ/discover/DW202141/24. Positive Energy Forever -- Mall Grab [1386413292].mp3";
+    let mut file = OpenOptions::new().read(true).write(true).open(filepath).unwrap();
+    let mut buffer = [0; 10];
+    file.read_exact(&mut buffer).unwrap();
+
+    let (_, header) = file_header(&buffer).ok().unwrap();
+    assert_eq!(header, Header { version: 4, revision: 0, flags: 0, tag_size: 101535 });
+
+    file.seek(SeekFrom::Start(10 + header.tag_size as u64)).unwrap();
+    file.read_exact(&mut buffer).unwrap();
+    if &buffer == b"\xFF\xFB\xE0\0\0\0\0\0\0\0" {
+      debug!("Checking padding {}...", filepath);
+      file.seek(SeekFrom::Start(header.tag_size as u64)).unwrap();
+      file.read_exact(&mut buffer).unwrap();
+      if &buffer == b"\0\0\0\0\0\0\0\0\0\0" {
+        info!("Padding {}...", filepath);
+        file.seek(SeekFrom::Start(header.tag_size as u64)).unwrap();
+        let padding: [u8; 10] = [0; 10];
+        file.write(padding.as_ref()).unwrap();
+      }
+    }
   }
 
   #[test]

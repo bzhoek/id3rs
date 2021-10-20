@@ -261,6 +261,21 @@ impl ID3Tag {
   pub fn artist(&self) -> Option<String> {
     self.text("PE1")
   }
+
+  pub fn set_title(&mut self, text: &str) {
+    self.set_text("IT2", text);
+  }
+
+  fn set_text(&mut self, id3: &str, change: &str) {
+    if let Some(index) = self.frames.iter().position(|frame|
+      match frame {
+        Frames::Text { id, size, flags, text } => id == id3,
+        _ => false
+      }) {
+      self.frames.remove(index);
+    }
+    self.frames.push(Frames::Text { id: id3.to_string(), size: 0, flags: 0, text: change.to_string() })
+  }
 }
 
 fn as_syncsafe(total: u32) -> Vec<u8> {
@@ -304,7 +319,7 @@ mod tests {
   pub fn test_tag() {
     log_init();
 
-    let tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
+    let mut tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
     let sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
         Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
@@ -327,6 +342,7 @@ mod tests {
         Frames::Padding { size } => (0 + size),
       });
 
+    tag.set_title("Roil Igger");
     tag.write("output.mp3").unwrap();
 
     let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67

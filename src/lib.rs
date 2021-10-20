@@ -1,6 +1,6 @@
 use std::convert::TryInto;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::str::from_utf8;
 
 use log::{debug, LevelFilter};
@@ -163,33 +163,42 @@ impl ID3Tag {
   }
 
   pub fn write(&self, target: &str) -> Result<()> {
-    let mut file = File::create(target)?;
-    file.write(b"ID3\x03\x00\x00")?;
+    let mut out = File::create(target)?;
+    out.write(b"ID3\x04\x00\x00")?;
     let vec = as_syncsafe(self.sum());
-    file.write(&*vec)?;
+    out.write(&*vec)?;
 
     for frame in self.frames.iter() {
       match frame {
         Frames::Frame { id, size, flags, data } => {
-          file.write(id.as_ref())?;
+          out.write(id.as_ref())?;
           let vec = as_syncsafe(*size);
-          file.write(&*vec)?;
-          file.write(&flags.to_be_bytes())?;
-          file.write(&data)?;
+          out.write(&*vec)?;
+          out.write(&flags.to_be_bytes())?;
+          out.write(&data)?;
         }
         Frames::Text { id, size: _, flags, text } => {
           let text: Vec<u8> = text.encode_utf16().map(|w| w.to_le_bytes()).flatten().collect();
           let len = text.len() as u32 + 3;
-          file.write(b"T")?;
-          file.write(id.as_ref())?;
-          file.write(&len.to_be_bytes())?; // todo: also as syncsafe?
-          file.write(&flags.to_be_bytes())?;
-          file.write(b"\x01\xff\xfe")?;
-          file.write(&*text)?;
+          let vec = as_syncsafe(len);
+          out.write(b"T")?;
+          out.write(id.as_ref())?;
+          out.write(&*vec)?;
+          out.write(&flags.to_be_bytes())?;
+          out.write(b"\x01\xff\xfe")?;
+          out.write(&*text)?;
         }
         _ => {}
       }
     }
+
+    let mut file = std::fs::File::open(self.filepath.to_string())?;
+    let mut buffer = [0; 10];
+    file.read_exact(&mut buffer).unwrap();
+    let (_, header) = file_header(&buffer).map_err(|_| "Header error")?;
+    file.seek(SeekFrom::Start(header.tag_size as u64))?;
+
+    std::io::copy(&mut file, &mut out)?;
 
     Ok(())
   }

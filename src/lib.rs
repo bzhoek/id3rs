@@ -1,5 +1,5 @@
 use std::convert::TryInto;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::str::from_utf8;
 
@@ -148,6 +148,7 @@ pub struct ID3Tag {
 }
 
 impl ID3Tag {
+
   pub fn read(filepath: &str) -> Result<ID3Tag> {
     let (mut file, header) = Self::read_header(filepath)?;
     let mut input = vec![0u8; header.tag_size as usize];
@@ -168,12 +169,16 @@ impl ID3Tag {
 
   pub fn write(&self, target: &str) -> Result<()> {
     let (mut file, header) = Self::read_header(&*self.filepath)?;
-    file.seek(SeekFrom::Start(header.tag_size as u64))?;
 
-    let mut tmp = File::create("stream.tmp")?;
-    std::io::copy(&mut file, &mut tmp)?;
+    let mut out = if self.filepath == target {
+      let mut tmp = File::create("stream.tmp")?;
+      file.seek(SeekFrom::Start(header.tag_size as u64))?;
+      std::io::copy(&mut file, &mut tmp)?;
+      OpenOptions::new().write(true).open(&self.filepath)?
+    } else {
+      File::create(target)?
+    };
 
-    let mut out = File::create(target)?;
     out.write(b"ID3\x04\x00\x00FAKE")?;
 
     for frame in self.frames.iter() {
@@ -219,8 +224,13 @@ impl ID3Tag {
     out.write(&*vec)?;
     out.seek(SeekFrom::Start(size))?;
 
-    file.seek(SeekFrom::Start(header.tag_size as u64))?;
-    std::io::copy(&mut file, &mut out)?;
+    if self.filepath == target {
+      let mut tmp = File::open("stream.tmp")?;
+      std::io::copy(&mut tmp, &mut out)?;
+    } else {
+      file.seek(SeekFrom::Start(header.tag_size as u64))?;
+      std::io::copy(&mut file, &mut out)?;
+    };
 
     Ok(())
   }
@@ -327,7 +337,7 @@ mod tests {
   }
 
   #[test]
-  pub fn test_tag() {
+  pub fn test_sum() {
     log_init();
 
     let mut tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
@@ -353,11 +363,27 @@ mod tests {
         Frames::Padding { size } => (0 + size),
       });
 
+    let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67
+  }
+
+  #[test]
+  pub fn test_change_copy() {
+    log_init();
+
+    let mut tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
     tag.set_title("Roil Igger");
     tag.set_extended_text("EnergyLevel", "99");
     tag.write("output.mp3").unwrap();
+  }
 
-    let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67
+  #[test]
+  pub fn test_change_inplace() {
+    log_init();
+
+    let mut tag = ID3Tag::read("Oil Rigger.mp3").unwrap();
+    tag.set_title("Roil Igger");
+    tag.set_extended_text("EnergyLevel", "99");
+    tag.write("Oil Rigger.mp3").unwrap();
   }
 
   #[test]

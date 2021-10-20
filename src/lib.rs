@@ -269,12 +269,23 @@ impl ID3Tag {
   fn set_text(&mut self, id3: &str, change: &str) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
-        Frames::Text { id, size, flags, text } => id == id3,
+        Frames::Text { id, size: _, flags: _, text: _ } => id == id3,
         _ => false
       }) {
       self.frames.remove(index);
     }
     self.frames.push(Frames::Text { id: id3.to_string(), size: 0, flags: 0, text: change.to_string() })
+  }
+
+  fn set_extended_text(&mut self, description: &str, value: &str) {
+    if let Some(index) = self.frames.iter().position(|frame|
+      match frame {
+        Frames::Text { id, size: _, flags: _, text } => id == "XXX" && text.starts_with(description),
+        _ => false
+      }) {
+      self.frames.remove(index);
+      self.frames.push(Frames::Text { id: "XXX".to_string(), size: 0, flags: 0, text: format!("{}\n{}", description, value) })
+    }
   }
 }
 
@@ -343,6 +354,7 @@ mod tests {
       });
 
     tag.set_title("Roil Igger");
+    tag.set_extended_text("EnergyLevel", "99");
     tag.write("output.mp3").unwrap();
 
     let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67

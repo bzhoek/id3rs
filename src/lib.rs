@@ -1,12 +1,14 @@
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
+use std::fmt::Error;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::str::from_utf8;
+use std::str::{from_utf8, Utf8Error};
 
-use log::{debug, info, LevelFilter};
+use log::{debug, info, LevelFilter, warn};
 use nom::branch::alt;
 use nom::bytes::streaming::{tag, take};
 use nom::combinator::{eof, map};
+use nom::Err::Incomplete;
 use nom::IResult;
 use nom::multi::{count, fold_many_m_n, many_till};
 use nom::number::complete::be_u32;
@@ -50,7 +52,10 @@ fn file_header(input: &[u8]) -> IResult<&[u8], Header> {
 fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
   map(
     take(4u8),
-    |res| from_utf8(res).unwrap(),
+    |res| match from_utf8(res) {
+      Ok(id) => id,
+      Err(_) => "FAIL"
+    },
   )(input)
 }
 
@@ -258,70 +263,76 @@ impl ID3Tag {
   }
 
   pub fn write(&self, target: &str) -> Result<()> {
-    let (mut file, header) = Self::read_header(&*self.filepath)?;
-
-    let mut out = if self.filepath == target {
-      let mut tmp = File::create("stream.tmp")?;
-      file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
-      std::io::copy(&mut file, &mut tmp)?;
-      OpenOptions::new().write(true).open(&self.filepath)?
+    if let Some(fail) = self.frames.iter().find(|f| match f {
+      Frames::Text { id, size, flags, text } => { id == "FAIL" }
+      _ => false
+    }) {
+      warn!("FAIL {}", target);
     } else {
-      File::create(target)?
-    };
+      let (mut file, header) = Self::read_header(&*self.filepath)?;
 
-    out.write(b"ID3\x04\x00\x00FAKE")?;
+      let mut out = if self.filepath == target {
+        let mut tmp = File::create("stream.tmp")?;
+        file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
+        std::io::copy(&mut file, &mut tmp)?;
+        OpenOptions::new().write(true).open(&self.filepath)?
+      } else {
+        File::create(target)?
+      };
 
-    for frame in self.frames.iter() {
-      match frame {
-        Frames::Frame { id, size, flags, data } => {
-          out.write(id.as_ref())?;
-          let vec = as_syncsafe(*size);
-          out.write(&*vec)?;
-          out.write(&flags.to_be_bytes())?;
-          out.write(&data)?;
-        }
-        Frames::Text { id, size: _, flags, text } => {
-          if id == "XXX" {
-            let string = text.replace("\n", "\u{0}");
-            let text: &[u8] = string.as_bytes();
-            let len = text.len() as u32 + 1;
-            let vec = as_syncsafe(len);
-            out.write(b"T")?;
+      out.write(b"ID3\x04\x00\x00FAKE")?;
+
+      for frame in self.frames.iter() {
+        match frame {
+          Frames::Frame { id, size, flags, data } => {
             out.write(id.as_ref())?;
+            let vec = as_syncsafe(*size);
             out.write(&*vec)?;
             out.write(&flags.to_be_bytes())?;
-            out.write(b"\x03")?;
-            out.write(&*text)?;
-          } else {
-            let text: Vec<u8> = text.encode_utf16().map(|w| w.to_le_bytes()).flatten().collect();
-            let len = text.len() as u32 + 3;
-            let vec = as_syncsafe(len);
-            out.write(b"T")?;
-            out.write(id.as_ref())?;
-            out.write(&*vec)?;
-            out.write(&flags.to_be_bytes())?;
-            out.write(b"\x01\xff\xfe")?;
-            out.write(&*text)?;
+            out.write(&data)?;
           }
+          Frames::Text { id, size: _, flags, text } => {
+            if id == "XXX" {
+              let string = text.replace("\n", "\u{0}");
+              let text: &[u8] = string.as_bytes();
+              let len = text.len() as u32 + 1;
+              let vec = as_syncsafe(len);
+              out.write(b"T")?;
+              out.write(id.as_ref())?;
+              out.write(&*vec)?;
+              out.write(&flags.to_be_bytes())?;
+              out.write(b"\x03")?;
+              out.write(&*text)?;
+            } else {
+              let text: Vec<u8> = text.encode_utf16().map(|w| w.to_le_bytes()).flatten().collect();
+              let len = text.len() as u32 + 3;
+              let vec = as_syncsafe(len);
+              out.write(b"T")?;
+              out.write(id.as_ref())?;
+              out.write(&*vec)?;
+              out.write(&flags.to_be_bytes())?;
+              out.write(b"\x01\xff\xfe")?;
+              out.write(&*text)?;
+            }
+          }
+          _ => {}
         }
-        _ => {}
       }
+
+      let size = out.stream_position()?;
+      let vec = as_syncsafe(size as u32);
+      out.seek(SeekFrom::Start(6))?;
+      out.write(&*vec)?;
+      out.seek(SeekFrom::Start(size))?;
+
+      if self.filepath == target {
+        let mut tmp = File::open("stream.tmp")?;
+        std::io::copy(&mut tmp, &mut out)?;
+      } else {
+        file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
+        std::io::copy(&mut file, &mut out)?;
+      };
     }
-
-    let size = out.stream_position()?;
-    let vec = as_syncsafe(size as u32);
-    out.seek(SeekFrom::Start(6))?;
-    out.write(&*vec)?;
-    out.seek(SeekFrom::Start(size))?;
-
-    if self.filepath == target {
-      let mut tmp = File::open("stream.tmp")?;
-      std::io::copy(&mut tmp, &mut out)?;
-    } else {
-      file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
-      std::io::copy(&mut file, &mut out)?;
-    };
-
     Ok(())
   }
 
@@ -484,11 +495,26 @@ mod tests {
   }
 
   #[test]
-  pub fn test_cries() {
+  pub fn test_reading() {
     log_init();
 
-    let tag = ID3Tag::read("0. Cries -- Glowal [608253472].mp3").unwrap();
-    assert_eq!(tag.title(), Some(" 8a E  Cries".to_string()));
+    ID3Tag::read("/Users/bas/OneDrive/PioneerDJ/deep/33. Paradiso Perduto -- Fred Everything [1297469512].mp3").unwrap();
+  }
+
+  #[test]
+  pub fn test_energy_level() {
+    log_init();
+
+    let tag = ID3Tag::read("/Users/bas/OneDrive/PioneerDJ/tech/6. Ciao -- Ben Sterling [1287637862].mp3").unwrap();
+    assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
+  }
+
+  #[test]
+  pub fn test_title() {
+    log_init();
+
+    let tag = ID3Tag::read("/Users/bas/OneDrive/PioneerDJ/0. Smashing The Veil -- Sonic Species [490587492].mp3").unwrap();
+    assert_eq!(tag.title(), Some(" 3a D  Smashing The Veil (Original Mix)".to_string()));
   }
 
   #[test]

@@ -3,7 +3,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::str::from_utf8;
 
-use log::{debug, info, LevelFilter, warn};
+use log::{debug, error, info, LevelFilter, warn};
 use nom::branch::alt;
 use nom::bytes::streaming::{tag, take};
 use nom::combinator::{eof, map};
@@ -41,10 +41,10 @@ pub enum Frames {
 }
 
 fn file_header(input: &[u8]) -> IResult<&[u8], Header> {
-  let (input, (_, version, revision, flags, next))
+  let (input, (_, version, revision, flags, tag_size))
     = tuple((tag("ID3"), be_u8, be_u8, be_u8, syncsafe))(input)?;
-  debug!("ID3 {} tag size {}", version, next);
-  Ok((input, Header { version, revision, flags, tag_size: next }))
+  debug!("ID3 {} tag size {}", version, tag_size);
+  Ok((input, Header { version, revision, flags, tag_size }))
 }
 
 fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
@@ -263,61 +263,81 @@ impl ID3Tag {
   }
 
   pub fn write(&self, target: &str) -> Result<()> {
-    if let Some(_fail) = self.frames.iter().find(|f| match f {
-      Frames::Text { id, size: _, flags: _, text: _ } => { id == "FAIL" }
+    let frames = self.frames.iter().filter(|f| match f {
+      Frames::Text { id, .. } => {
+        debug!("text {}", id);
+        id != "FAIL"
+      }
+      Frames::Frame { id, .. } => {
+        debug!("frame {}", id);
+        id != "FAIL"
+      }
       _ => false
-    }) {
-      warn!("FAIL {}", target);
-    } else {
-      let (mut file, header) = Self::read_header(&*self.filepath)?;
+    }).collect::<Vec<&Frames>>();
 
-      let mut out = if self.filepath == target {
-        let mut tmp = File::create("stream.tmp")?;
-        file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
-        std::io::copy(&mut file, &mut tmp)?;
-        OpenOptions::new().write(true).open(&self.filepath)?
+    let (mut file, header) = Self::read_header(&*self.filepath)?;
+
+    let mut out = if self.filepath == target {
+      let mut tmp = File::create("stream.tmp")?;
+      file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
+      let mut buffer = [0; 3];
+      file.read_exact(&mut buffer)?;
+      if &buffer != b"\xFF\xFB\xE0" {
+        debug!("Trying earlier header");
+        file.seek(SeekFrom::Start(header.tag_size as u64))?;
+        file.read_exact(&mut buffer)?;
+        if &buffer != b"\xFF\xFB\xE0" {
+          error!("No MP3 header");
+          return Ok(());
+        }
+        file.seek(SeekFrom::Start(header.tag_size as u64))?;
       } else {
-        File::create(target)?
-      };
+        file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
+      }
+      std::io::copy(&mut file, &mut tmp)?;
+      OpenOptions::new().write(true).open(&self.filepath)?
+    } else {
+      File::create(target)?
+    };
 
-      out.write(b"ID3\x04\x00\x00FAKE")?;
+    out.write(b"ID3\x04\x00\x00FAKE")?;
 
-      for frame in self.frames.iter() {
-        match frame {
-          Frames::Frame { id, size, flags, data } => {
+    for frame in frames.iter() {
+      match frame {
+        Frames::Frame { id, size, flags, data } => {
+          out.write(id.as_ref())?;
+          let vec = as_syncsafe(*size);
+          out.write(&*vec)?;
+          out.write(&flags.to_be_bytes())?;
+          out.write(&data)?;
+        }
+        Frames::Text { id, size: _, flags, text } => {
+          if id == "XXX" {
+            let string = text.replace("\n", "\u{0}");
+            let text: &[u8] = string.as_bytes();
+            let len = text.len() as u32 + 1;
+            let vec = as_syncsafe(len);
+            out.write(b"T")?;
             out.write(id.as_ref())?;
-            let vec = as_syncsafe(*size);
             out.write(&*vec)?;
             out.write(&flags.to_be_bytes())?;
-            out.write(&data)?;
+            out.write(b"\x03")?;
+            out.write(&*text)?;
+          } else {
+            let text: Vec<u8> = text.encode_utf16().map(|w| w.to_le_bytes()).flatten().collect();
+            let len = text.len() as u32 + 3;
+            let vec = as_syncsafe(len);
+            out.write(b"T")?;
+            out.write(id.as_ref())?;
+            out.write(&*vec)?;
+            out.write(&flags.to_be_bytes())?;
+            out.write(b"\x01\xff\xfe")?;
+            out.write(&*text)?;
           }
-          Frames::Text { id, size: _, flags, text } => {
-            if id == "XXX" {
-              let string = text.replace("\n", "\u{0}");
-              let text: &[u8] = string.as_bytes();
-              let len = text.len() as u32 + 1;
-              let vec = as_syncsafe(len);
-              out.write(b"T")?;
-              out.write(id.as_ref())?;
-              out.write(&*vec)?;
-              out.write(&flags.to_be_bytes())?;
-              out.write(b"\x03")?;
-              out.write(&*text)?;
-            } else {
-              let text: Vec<u8> = text.encode_utf16().map(|w| w.to_le_bytes()).flatten().collect();
-              let len = text.len() as u32 + 3;
-              let vec = as_syncsafe(len);
-              out.write(b"T")?;
-              out.write(id.as_ref())?;
-              out.write(&*vec)?;
-              out.write(&flags.to_be_bytes())?;
-              out.write(b"\x01\xff\xfe")?;
-              out.write(&*text)?;
-            }
-          }
-          _ => {}
         }
+        _ => {}
       }
+    }
 
     let size = out.stream_position()? - 10;
     // tag size excludes header
@@ -327,14 +347,14 @@ impl ID3Tag {
     out.write(&*vec)?;
     out.seek(SeekFrom::Start(10 + size))?;
 
-      if self.filepath == target {
-        let mut tmp = File::open("stream.tmp")?;
-        std::io::copy(&mut tmp, &mut out)?;
-      } else {
-        file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
-        std::io::copy(&mut file, &mut out)?;
-      };
-    }
+    if self.filepath == target {
+      let mut tmp = File::open("stream.tmp")?;
+      std::io::copy(&mut tmp, &mut out)?;
+    } else {
+      file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
+      std::io::copy(&mut file, &mut out)?;
+    };
+
     Ok(())
   }
 
@@ -526,14 +546,21 @@ mod tests {
   }
 
   #[test]
-  pub fn test_padding_fix() {
+  pub fn test_repairing_copy() {
     log_init();
 
-    let file = "/Users/bas/OneDrive/PioneerDJ/discover/DW202050/16. Amber Decay  -- Kangding Ray [1261347082].mp3";
-    match ID3Tag::read(file) {
-      Ok(_) => {}
-      Err(_) => { ID3Tag::fix_copy_error_with_padding(file).unwrap(); }
-    }
+    fs::copy("fixing-ro.mp3", "fixing-rw.mp3").unwrap();
+    let tag = ID3Tag::read("fixing-ro.mp3").unwrap();
+    tag.write("fixing-repair.mp3").unwrap();
+  }
+
+  #[test]
+  pub fn test_repairing_inplace() {
+    log_init();
+
+    fs::copy("fixing-ro.mp3", "fixing-rw.mp3").unwrap();
+    let tag = ID3Tag::read("fixing-rw.mp3").unwrap();
+    tag.write("fixing-rw.mp3").unwrap();
   }
 
   #[test]

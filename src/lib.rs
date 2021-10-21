@@ -1,14 +1,12 @@
-use std::convert::{TryFrom, TryInto};
-use std::fmt::Error;
+use std::convert::TryInto;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::str::{from_utf8, Utf8Error};
+use std::str::from_utf8;
 
 use log::{debug, info, LevelFilter, warn};
 use nom::branch::alt;
 use nom::bytes::streaming::{tag, take};
 use nom::combinator::{eof, map};
-use nom::Err::Incomplete;
 use nom::IResult;
 use nom::multi::{count, fold_many_m_n, many_till};
 use nom::number::complete::be_u32;
@@ -45,7 +43,7 @@ pub enum Frames {
 fn file_header(input: &[u8]) -> IResult<&[u8], Header> {
   let (input, (_, version, revision, flags, next))
     = tuple((tag("ID3"), be_u8, be_u8, be_u8, syncsafe))(input)?;
-  debug!("tag size {}", next);
+  debug!("ID3 {} tag size {}", version, next);
   Ok((input, Header { version, revision, flags, tag_size: next }))
 }
 
@@ -86,13 +84,15 @@ fn text_header(input: &[u8]) -> IResult<&[u8], (&[u8], &str, u32, u16)> {
 
 fn text_frame_utf16(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, (_, id, size, flags)) = text_header(input)?;
+  debug!("utf16 {} {}", id, size);
   let (input, (_, text)) =
     tuple((
       tag(b"\x01\xff\xfe"),
       count(le_u16, (size - 3) as usize / 2)
     ))(input)?;
-  let text = String::from_utf16(&*text).unwrap();
-  debug!("utf16 {} {} {}", id, size, text);
+  let text: Vec<u16> = text.into_iter().filter(|w| *w != 0xfeffu16).collect();
+  let text = String::from_utf16(&*text).unwrap().replace("\u{0000}", "\n");
+  debug!("utf16 {}", text);
   Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
 }
 
@@ -109,7 +109,7 @@ fn text_frame_utf8(input: &[u8]) -> IResult<&[u8], Frames> {
 }
 
 fn text_frame(input: &[u8]) -> IResult<&[u8], Frames> {
-  alt((text_frame_utf16, text_frame_utf8))(input)
+  alt((text_frame_utf8, text_frame_utf16, ))(input)
 }
 
 fn padding(input: &[u8]) -> IResult<&[u8], Frames> {
@@ -134,7 +134,7 @@ fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
 }
 
 fn text_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
-  alt((text_frame_utf16_v23, text_frame_utf8_v23))(input)
+  alt((text_frame_utf8_v23, text_frame_utf16_v23))(input)
 }
 
 fn text_frame_utf8_v23(input: &[u8]) -> IResult<&[u8], Frames> {
@@ -263,8 +263,8 @@ impl ID3Tag {
   }
 
   pub fn write(&self, target: &str) -> Result<()> {
-    if let Some(fail) = self.frames.iter().find(|f| match f {
-      Frames::Text { id, size, flags, text } => { id == "FAIL" }
+    if let Some(_fail) = self.frames.iter().find(|f| match f {
+      Frames::Text { id, size: _, flags: _, text: _ } => { id == "FAIL" }
       _ => false
     }) {
       warn!("FAIL {}", target);
@@ -424,6 +424,7 @@ pub fn log_init() {
 
 #[cfg(test)]
 mod tests {
+  use std::fs;
   use std::fs::File;
   use std::io::Read;
 
@@ -432,16 +433,10 @@ mod tests {
   use super::*;
 
   #[test]
-  pub fn test_class() {
-    let tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
-    assert_eq!(tag.frames.len(), 17);
-  }
-
-  #[test]
   pub fn test_sum() {
     log_init();
 
-    let tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
+    let tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
     let sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
         Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
@@ -468,20 +463,36 @@ mod tests {
   }
 
   #[test]
+  pub fn test_frames() {
+    log_init();
+
+    let tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
+    assert_eq!(tag.frames.len(), 17);
+  }
+
+  #[test]
+  pub fn test_reading() {
+    log_init();
+
+    let tag = ID3Tag::read("/Users/bas/OneDrive/PioneerDJ/liked/0. Rain -- Komputer [73160775].mp3").unwrap();
+    assert_eq!(tag.frames.len(), 20);
+  }
+
+  #[test]
   pub fn test_change_copy() {
     log_init();
 
-    let mut tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
+    let mut tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
     tag.set_title("Roil Igger");
     tag.set_extended_text("EnergyLevel", "99");
-    tag.write("output.mp3").unwrap();
+    tag.write("oil-rigger-out.mp3").unwrap();
   }
 
   #[test]
   pub fn test_extended_text() {
     log_init();
 
-    let mut tag = ID3Tag::read("13. Oil Rigger -- Regent [1506153642] 2.mp3").unwrap();
+    let mut tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
     tag.set_extended_text("OriginalTitle", "Oil Rigger");
     assert_eq!(tag.extended_text("OriginalTitle"), Some("Oil Rigger".to_string()));
   }
@@ -490,22 +501,17 @@ mod tests {
   pub fn test_23_extended_text() {
     log_init();
 
-    let tag = ID3Tag::read("30. London Bass -- Mr.diamond [1393177122].mp3").unwrap();
+    let tag = ID3Tag::read("london-bass-v23-ro.mp3").unwrap();
     assert_eq!(tag.extended_text("OriginalTitle"), Some("London Bass".to_string()));
-  }
-
-  #[test]
-  pub fn test_reading() {
-    log_init();
-
-    ID3Tag::read("/Users/bas/OneDrive/PioneerDJ/deep/33. Paradiso Perduto -- Fred Everything [1297469512].mp3").unwrap();
   }
 
   #[test]
   pub fn test_energy_level() {
     log_init();
 
-    let tag = ID3Tag::read("/Users/bas/OneDrive/PioneerDJ/tech/6. Ciao -- Ben Sterling [1287637862].mp3").unwrap();
+    let tag = ID3Tag::read("energy-utf7-ro.mp3").unwrap();
+    assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
+    let tag = ID3Tag::read("energy-utf16-ro.mp3").unwrap();
     assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
   }
 
@@ -513,8 +519,8 @@ mod tests {
   pub fn test_title() {
     log_init();
 
-    let tag = ID3Tag::read("/Users/bas/OneDrive/PioneerDJ/0. Smashing The Veil -- Sonic Species [490587492].mp3").unwrap();
-    assert_eq!(tag.title(), Some(" 3a D  Smashing The Veil (Original Mix)".to_string()));
+    let tag = ID3Tag::read("/Users/bas/OneDrive/PioneerDJ/minimal/0. Applause -- Rossi. [901764012].mp3").unwrap();
+    assert_eq!(tag.title(), Some(" 7a E  Applause".to_string()));
   }
 
   #[test]
@@ -532,14 +538,15 @@ mod tests {
   pub fn test_change_inplace() {
     log_init();
 
-    let mut tag = ID3Tag::read("Oil Rigger.mp3").unwrap();
+    fs::copy("oil-rigger-v24-ro.mp3", "oil-rigger-rw.mp3").unwrap();
+    let mut tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
     tag.set_title("Roil Igger");
     tag.set_extended_text("EnergyLevel", "99");
-    tag.write("Oil Rigger.mp3").unwrap();
+    tag.write("oil-rigger-rw.mp3").unwrap();
   }
 
   #[test]
-  pub fn sync() {
+  pub fn test_sync_safe() {
     log_init();
 
     assert_eq!(as_syncsafe_bytes(66872), 0x040A38);
@@ -552,7 +559,7 @@ mod tests {
 
   #[test]
   pub fn test_class_text() {
-    let tag = ID3Tag::read("Oil Rigger -- Regent [1506153642].mp3").unwrap();
+    let tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
 
     assert_eq!(tag.text("IT2"), Some("Oil Rigger".to_string()));
     assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
@@ -565,7 +572,7 @@ mod tests {
   #[test]
   pub fn test_library() {
     log_init();
-    let tag = ID3Tag::read("13. Oil Rigger -- Regent [1506153642].mp3").unwrap();
+    let tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
 
     assert_eq!(tag.text("IT2"), Some("Oil Rigger".to_string()));
     assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
@@ -577,18 +584,18 @@ mod tests {
   }
 
   fn get_test_file() -> File {
-    let filepath = "Oil Rigger -- Regent [1506153642].mp3";
+    let filepath = "oil-rigger-v24-ro.mp3";
     let file = std::fs::File::open(filepath).unwrap();
     file
   }
 
   #[test]
   fn test_energy() {
-    assert_eq!(find_energy("Oil Rigger -- Regent [1506153642].mp3"), Some("EnergyLevel\n6".to_string()));
+    assert_eq!(find_energy("oil-rigger-v24-ro.mp3"), Some("EnergyLevel\n6".to_string()));
   }
 
   #[test]
-  fn test_frames() {
+  fn test_header_and_frames() {
     let mut file = get_test_file();
     let mut buffer = [0; 10];
     file.read_exact(&mut buffer).unwrap();

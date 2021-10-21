@@ -319,11 +319,13 @@ impl ID3Tag {
         }
       }
 
-      let size = out.stream_position()?;
-      let vec = as_syncsafe(size as u32);
-      out.seek(SeekFrom::Start(6))?;
-      out.write(&*vec)?;
-      out.seek(SeekFrom::Start(size))?;
+    let size = out.stream_position()? - 10;
+    // tag size excludes header
+    debug!("new tag size {}", size);
+    let vec = as_syncsafe(size as u32);
+    out.seek(SeekFrom::Start(6))?;
+    out.write(&*vec)?;
+    out.seek(SeekFrom::Start(10 + size))?;
 
       if self.filepath == target {
         let mut tmp = File::open("stream.tmp")?;

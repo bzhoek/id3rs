@@ -10,5 +10,7 @@ nom = "6.0"
 log = "0.4.14"
 env_logger = "0.8.3"
 
+clap = "2.33"
+
 [dev-dependencies]
 assert_matches = "1.5"

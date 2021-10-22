@@ -1,5 +1,7 @@
+use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::process::Command;
 use std::str::from_utf8;
 
 use log::{debug, LevelFilter};
@@ -373,6 +375,23 @@ fn as_syncsafe(total: u32) -> Vec<u8> {
   result
 }
 
+pub fn make_rwcopy(rofile: &str, rwfile: &str) -> Result<()> {
+  fs::copy(&rofile, &rwfile)?;
+  let mut perms = fs::metadata(&rwfile)?.permissions();
+  perms.set_readonly(false);
+  fs::set_permissions(&rwfile, perms)?;
+  Ok(())
+}
+
+pub fn mpck(filepath: &str) -> String {
+  let output = Command::new("mpck")
+    .arg(filepath)
+    .output()
+    .expect("failed to execute process");
+
+  String::from_utf8(output.stdout).unwrap().replace(filepath, "")
+}
+
 pub fn log_init() {
   let _ = env_logger::builder().is_test(true)
     .filter_level(LevelFilter::Debug)
@@ -382,9 +401,7 @@ pub fn log_init() {
 #[cfg(test)]
 mod tests {
   use std::convert::TryInto;
-  use std::fs;
   use std::io::Read;
-  use std::process::Command;
 
   use assert_matches::assert_matches;
 
@@ -439,7 +456,7 @@ mod tests {
   pub fn test_change_inplace() {
     log_init();
     let (rofile, _, rwfile) = filenames("4bleak");
-    make_rwcopy(&rofile, &rwfile);
+    make_rwcopy(&rofile, &rwfile).unwrap();
 
     let mut tag = ID3Tag::read(&rwfile).unwrap();
     tag.set_title("Bleek");
@@ -453,7 +470,7 @@ mod tests {
     log_init();
 
     let (rofile, _, rwfile) = filenames("4bleak");
-    make_rwcopy(&rofile, &rwfile);
+    make_rwcopy(&rofile, &rwfile).unwrap();
 
     let mut tag = ID3Tag::read(&rwfile).unwrap();
     tag.set_extended_text("OriginalTitle", &tag.title().unwrap());
@@ -599,21 +616,5 @@ mod tests {
 
   fn filenames(base: &str) -> (String, String, String) {
     (format!("{}.mp3", base), format!("{}-out.mp3", base), format!("{}-rw.mp3", base))
-  }
-
-  fn make_rwcopy(rofile: &str, rwfile: &str) {
-    fs::copy(&rofile, &rwfile).unwrap();
-    let mut perms = fs::metadata(&rwfile).unwrap().permissions();
-    perms.set_readonly(false);
-    fs::set_permissions(&rwfile, perms).unwrap();
-  }
-
-  fn mpck(filepath: &str) -> String {
-    let output = Command::new("mpck")
-      .arg(filepath)
-      .output()
-      .expect("failed to execute process");
-
-    String::from_utf8(output.stdout).unwrap().replace(filepath, "")
   }
 }

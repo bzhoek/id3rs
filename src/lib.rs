@@ -3,7 +3,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::str::from_utf8;
 
-use log::{debug, error, info, LevelFilter, warn};
+use log::{debug, LevelFilter};
 use nom::branch::alt;
 use nom::bytes::streaming::{tag, take};
 use nom::combinator::{eof, map};
@@ -262,7 +262,7 @@ impl ID3Tag {
 
     out.write(b"ID3\x04\x00\x00FAKE")?;
 
-    ID3Tag::write_id3_frames(frames, &mut out);
+    ID3Tag::write_id3_frames(frames, &mut out)?;
 
     let size = out.stream_position()? - ID3HEADER_SIZE;
     debug!("new tag size {}", size);
@@ -492,18 +492,43 @@ mod tests {
     assert_eq!(tag.title(), Some(" 7a E  Applause".to_string()));
   }
 
+
+  fn filenames(base: &str) -> (String, String, String) {
+    (format!("{}.mp3", base), format!("{}-out.mp3", base), format!("{}-rw.mp3", base))
+  }
+
   #[test]
   pub fn test_change_copy() {
     log_init();
 
-    let infile = "4bleak.mp3";
-    let outfile = "4bleak-out.mp3";
+    let (rofile, outfile, _) = filenames("4bleak");
 
-    let mut tag = ID3Tag::read(infile).unwrap();
+    let mut tag = ID3Tag::read(&rofile).unwrap();
     tag.set_title("Bleek");
     tag.set_extended_text("EnergyLevel", "99");
-    tag.write(outfile).unwrap();
-    assert_eq!(mpck(infile), mpck(outfile));
+    tag.write(&outfile).unwrap();
+    assert_eq!(mpck(&rofile), mpck(&outfile));
+  }
+
+  #[test]
+  pub fn test_change_inplace() {
+    log_init();
+
+    let (rofile, _, rwfile) = filenames("4bleak");
+    make_rwcopy(&rofile, &rwfile);
+
+    let mut tag = ID3Tag::read(&rwfile).unwrap();
+    tag.set_title("Bleek");
+    tag.set_extended_text("EnergyLevel", "99");
+    tag.write(&rwfile).unwrap();
+    assert_eq!(mpck(&rofile), mpck(&rwfile));
+  }
+
+  fn make_rwcopy(rofile: &str, rwfile: &str) {
+    fs::copy(&rofile, &rwfile).unwrap();
+    let mut perms = fs::metadata(&rwfile).unwrap().permissions();
+    perms.set_readonly(false);
+    fs::set_permissions(&rwfile, perms).unwrap();
   }
 
   fn mpck(filepath: &str) -> String {
@@ -513,17 +538,6 @@ mod tests {
       .expect("failed to execute process");
 
     String::from_utf8(output.stdout).unwrap().replace(filepath, "")
-  }
-
-  #[test]
-  pub fn test_change_inplace() {
-    log_init();
-
-    fs::copy("oil-rigger-v24-ro.mp3", "oil-rigger-rw.mp3").unwrap();
-    let mut tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
-    tag.set_title("Roil Igger");
-    tag.set_extended_text("EnergyLevel", "99");
-    tag.write("oil-rigger-rw.mp3").unwrap();
   }
 
   #[test]

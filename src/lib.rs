@@ -322,10 +322,6 @@ impl ID3Tag {
     }).flatten()
   }
 
-  pub fn key(&self) -> Option<String> {
-    self.text("KEY")
-  }
-
   pub fn title(&self) -> Option<String> {
     self.text("IT2")
   }
@@ -338,8 +334,20 @@ impl ID3Tag {
     self.text("PE1")
   }
 
+  pub fn genre(&self) -> Option<String> {
+    self.text("CON")
+  }
+
+  pub fn key(&self) -> Option<String> {
+    self.text("KEY")
+  }
+
   pub fn set_title(&mut self, text: &str) {
     self.set_text("IT2", text);
+  }
+
+  pub fn set_genre(&mut self, text: &str) {
+    self.set_text("CON", text);
   }
 
   fn set_text(&mut self, id3: &str, change: &str) {
@@ -428,6 +436,33 @@ mod tests {
     assert_eq!(tag.subtitle(), Some("".to_string()));
     assert_eq!(tag.key(), Some("4A".to_string()));
     assert_eq!(tag.artist(), Some("Maenad Veyl".to_string()));
+  }
+
+  #[test]
+  pub fn test_reading_genre() {
+    log_init();
+    let (rofile, _, _) = filenames("4blitz");
+    let tag = ID3Tag::read(&rofile).unwrap();
+
+    assert_eq!(tag.text("CON"), Some("techno".to_string()));
+    assert_eq!(tag.genre(), Some("techno".to_string()));
+  }
+
+  #[test]
+  pub fn test_changing_genre() {
+    log_init();
+    let (rofile, _, rwfile) = filenames("4blitz");
+    make_rwcopy(&rofile, &rwfile).unwrap();
+
+    let mut tag = ID3Tag::read(&rwfile).unwrap();
+    assert_eq!(tag.text("CON"), Some("techno".to_string()));
+    assert_eq!(tag.genre(), Some("techno".to_string()));
+    tag.set_genre("notech");
+    tag.write(&rwfile).unwrap();
+
+    let tag = ID3Tag::read(&rwfile).unwrap();
+    assert_eq!(tag.genre(), Some("notech".to_string()));
+    assert_eq!(mpck(&rofile), mpck(&rwfile));
   }
 
   #[test]

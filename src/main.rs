@@ -1,8 +1,3 @@
-use std::convert::TryInto;
-use std::fs::File;
-use std::io::{Read, Seek};
-use std::io::SeekFrom::Current;
-
 use clap::{App, Arg, ArgMatches};
 use env_logger::Env;
 use env_logger::Target::Stdout;

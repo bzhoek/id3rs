@@ -1,4 +1,3 @@
-use std::convert::TryInto;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::str::from_utf8;
@@ -181,28 +180,6 @@ fn generic_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, data) = take(size)(input)?;
   Ok((input, Frames::Frame { id: id.to_string(), size, flags, data: data.into() }))
 }
-
-pub fn find_energy(file: &str) -> Option<String> {
-  let mut file = std::fs::File::open(file).unwrap();
-
-  let mut buffer = [0; 10];
-  file.read_exact(&mut buffer).unwrap();
-
-  let (_, header) = file_header(&buffer).ok().unwrap();
-  let mut input = vec![0u8; header.tag_size as usize];
-  file.read_exact(&mut input).unwrap();
-
-  let (_, result) = all_frames(&input).ok().unwrap();
-  result.iter()
-    .find(|f| match f {
-      Frames::Text { id: _, size: _, flags: _, text } => text.starts_with("Energy"),
-      _ => false
-    }).map(|f| match f {
-    Frames::Text { id: _, size: _, flags: _, text } => Some(text.to_string()),
-    _ => None
-  }).flatten()
-}
-
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -396,12 +373,6 @@ fn as_syncsafe(total: u32) -> Vec<u8> {
   result
 }
 
-fn as_syncsafe_bytes(total: u32) -> u32 {
-  let vec = as_syncsafe(total);
-  let (bytes, _) = vec.as_slice().split_at(std::mem::size_of::<u32>());
-  u32::from_be_bytes(bytes.try_into().unwrap())
-}
-
 pub fn log_init() {
   let _ = env_logger::builder().is_test(true)
     .filter_level(LevelFilter::Debug)
@@ -410,8 +381,8 @@ pub fn log_init() {
 
 #[cfg(test)]
 mod tests {
+  use std::convert::TryInto;
   use std::fs;
-  use std::fs::File;
   use std::io::Read;
   use std::process::Command;
 
@@ -420,87 +391,41 @@ mod tests {
   use super::*;
 
   #[test]
-  pub fn test_sum() {
+  pub fn test_utf8_energy_level() {
     log_init();
-
-    let tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
-    let sum = tag.frames.iter()
-      .fold(0u32, |sum, frame| sum + match frame {
-        Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
-        Frames::Text { id: _, size, flags: _, text: _ } => (10 + size),
-        Frames::Padding { size } => (0 + size),
-      });
-
-    // [2021-10-19T18:21:38Z DEBUG id3_rs] utf16 PE1 15
-    // [2021-10-19T18:21:38Z DEBUG id3_rs] utf16 IT2 23
-    // [2021-10-19T18:21:38Z DEBUG id3_rs] utf16 ALB 11
-    // [2021-10-19T18:21:38Z DEBUG id3_rs] utf16 IT3 3
-    // [2021-10-19T18:21:38Z DEBUG id3_rs] utf16 CON 15
-
-    assert_eq!(sum, 66872);
-
-    let _sum = tag.frames.iter()
-      .fold(0u32, |sum, frame| sum + match frame {
-        Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
-        Frames::Text { id: _, size: _, flags: _, text } => (10 + 1 + text.len() as u32),
-        Frames::Padding { size } => (0 + size),
-      });
-
-    let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67
-  }
-
-  #[test]
-  pub fn test_frames() {
-    log_init();
-
-    let tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
-    assert_eq!(tag.frames.len(), 17);
-  }
-
-  #[test]
-  pub fn test_extended_text() {
-    log_init();
-
-    let mut tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
-    tag.set_extended_text("OriginalTitle", "Oil Rigger");
-    assert_eq!(tag.extended_text("OriginalTitle"), Some("Oil Rigger".to_string()));
-  }
-
-  #[test]
-  pub fn test_23_extended_text() {
-    log_init();
-
-    let tag = ID3Tag::read("london-bass-v23-ro.mp3").unwrap();
-    assert_eq!(tag.extended_text("OriginalTitle"), Some("London Bass".to_string()));
-  }
-
-  #[test]
-  pub fn test_energy_level() {
-    log_init();
-
-    let tag = ID3Tag::read("energy-utf7-ro.mp3").unwrap();
-    assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
-    let tag = ID3Tag::read("energy-utf16-ro.mp3").unwrap();
+    let (rofile, _, _) = filenames("4bleak");
+    let tag = ID3Tag::read(&rofile).unwrap();
     assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
   }
 
   #[test]
-  pub fn test_title() {
+  pub fn test_reading() {
     log_init();
+    let (rofile, _, _) = filenames("4bleak");
+    let tag = ID3Tag::read(&rofile).unwrap();
 
-    let tag = ID3Tag::read("bleak.mp3").unwrap();
-    assert_eq!(tag.title(), Some(" 7a E  Applause".to_string()));
+    assert_eq!(tag.text("IT2"), Some("Bleak".to_string()));
+    assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
+    assert_eq!(tag.extended_text("OriginalTitle"), None);
+    assert_eq!(tag.title(), Some("Bleak".to_string()));
+    assert_eq!(tag.subtitle(), Some("".to_string()));
+    assert_eq!(tag.key(), Some("4A".to_string()));
+    assert_eq!(tag.artist(), Some("Maenad Veyl".to_string()));
   }
 
+  #[test]
+  pub fn test_unmodified_frame_count() {
+    log_init();
+    let (rofile, _, _) = filenames("4bleak");
 
-  fn filenames(base: &str) -> (String, String, String) {
-    (format!("{}.mp3", base), format!("{}-out.mp3", base), format!("{}-rw.mp3", base))
+    let tag = ID3Tag::read(&rofile).unwrap();
+    assert_eq!(tag.frames.len(), 14);
+    assert_eq!(tag.extended_text("OriginalTitle"), None);
   }
 
   #[test]
   pub fn test_change_copy() {
     log_init();
-
     let (rofile, outfile, _) = filenames("4bleak");
 
     let mut tag = ID3Tag::read(&rofile).unwrap();
@@ -513,7 +438,6 @@ mod tests {
   #[test]
   pub fn test_change_inplace() {
     log_init();
-
     let (rofile, _, rwfile) = filenames("4bleak");
     make_rwcopy(&rofile, &rwfile);
 
@@ -524,20 +448,22 @@ mod tests {
     assert_eq!(mpck(&rofile), mpck(&rwfile));
   }
 
-  fn make_rwcopy(rofile: &str, rwfile: &str) {
-    fs::copy(&rofile, &rwfile).unwrap();
-    let mut perms = fs::metadata(&rwfile).unwrap().permissions();
-    perms.set_readonly(false);
-    fs::set_permissions(&rwfile, perms).unwrap();
-  }
+  #[test]
+  pub fn test_change_extended_text() {
+    log_init();
 
-  fn mpck(filepath: &str) -> String {
-    let output = Command::new("mpck")
-      .arg(filepath)
-      .output()
-      .expect("failed to execute process");
+    let (rofile, _, rwfile) = filenames("4bleak");
+    make_rwcopy(&rofile, &rwfile);
 
-    String::from_utf8(output.stdout).unwrap().replace(filepath, "")
+    let mut tag = ID3Tag::read(&rwfile).unwrap();
+    tag.set_extended_text("OriginalTitle", &tag.title().unwrap());
+    tag.set_extended_text("EnergyLevel", "99");
+    tag.write(&rwfile).unwrap();
+
+    let tag = ID3Tag::read(&rwfile).unwrap();
+    assert_eq!(tag.extended_text("OriginalTitle"), Some("Bleak".to_string()));
+    assert_eq!(tag.extended_text("EnergyLevel"), Some("99".to_string()));
+    assert_eq!(mpck(&rofile), mpck(&rwfile));
   }
 
   #[test]
@@ -552,107 +478,61 @@ mod tests {
     assert_eq!(as_syncsafe(0b00001111111_1111111_1111111_1111111u32), vec![127, 127, 127, 127]);
   }
 
-  #[test]
-  pub fn test_class_text() {
-    let tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
-
-    assert_eq!(tag.text("IT2"), Some("Oil Rigger".to_string()));
-    assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
-    assert_eq!(tag.title(), Some("Oil Rigger".to_string()));
-    assert_eq!(tag.subtitle(), Some("".to_string()));
-    assert_eq!(tag.key(), Some("4A".to_string()));
-    assert_eq!(tag.artist(), Some("Regent".to_string()));
-  }
-
-  #[test]
-  pub fn test_library() {
-    log_init();
-    let tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
-
-    assert_eq!(tag.text("IT2"), Some("Oil Rigger".to_string()));
-    assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
-    assert_eq!(tag.extended_text("OriginalTitle"), None);
-    assert_eq!(tag.title(), Some("Oil Rigger".to_string()));
-    assert_eq!(tag.subtitle(), Some("".to_string()));
-    assert_eq!(tag.key(), Some("4A".to_string()));
-    assert_eq!(tag.artist(), Some("Regent".to_string()));
-  }
-
-  fn get_test_file() -> File {
-    let filepath = "oil-rigger-v24-ro.mp3";
-    let file = std::fs::File::open(filepath).unwrap();
-    file
-  }
-
-  #[test]
-  fn test_energy() {
-    assert_eq!(find_energy("oil-rigger-v24-ro.mp3"), Some("EnergyLevel\n6".to_string()));
+  fn as_syncsafe_bytes(total: u32) -> u32 {
+    let vec = as_syncsafe(total);
+    let (bytes, _) = vec.as_slice().split_at(std::mem::size_of::<u32>());
+    u32::from_be_bytes(bytes.try_into().unwrap())
   }
 
   #[test]
   fn test_header_and_frames() {
-    let mut file = get_test_file();
+    let (rofile, _, _) = filenames("4bleak");
+    let mut file = std::fs::File::open(&rofile).unwrap();
     let mut buffer = [0; 10];
     file.read_exact(&mut buffer).unwrap();
 
     let (_, header) = file_header(&buffer).ok().unwrap();
-    assert_eq!(header, Header { version: 4, revision: 0, flags: 0, tag_size: 66872 });
+    assert_eq!(header, Header { version: 4, revision: 0, flags: 0, tag_size: 42316 });
 
     let mut input = vec![0u8; header.tag_size as usize];
     file.read_exact(&mut input).unwrap();
 
     let (_, result) = all_frames(&input).ok().unwrap();
-    assert_eq!(17, result.len());
+    assert_eq!(14, result.len());
   }
 
   #[test]
   fn test_frames_individually() {
     log_init();
 
-    let mut file = get_test_file();
+    let (rofile, _, _) = filenames("4bleak");
+    let mut file = std::fs::File::open(&rofile).unwrap();
     let mut buffer = [0; 10];
     file.read_exact(&mut buffer).unwrap();
 
     let (_, header) = file_header(&buffer).ok().unwrap();
-    assert_eq!(header, Header { version: 4, revision: 0, flags: 0, tag_size: 66872 });
+    assert_eq!(header, Header { version: 4, revision: 0, flags: 0, tag_size: 42316 });
 
     let mut input = vec![0u8; header.tag_size as usize];
     file.read_exact(&mut input).unwrap();
 
     let (input, frame) = text_frame(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "PE1".to_string(), size: 15, flags: 0, text: "Regent".to_string() });
+    assert_eq!(frame, Frames::Text { id: "PE1".to_string(), size: 25, flags: 0, text: "Maenad Veyl".to_string() });
     let (input, frame) = text_frame(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "IT2".to_string(), size: 23, flags: 0, text: "Oil Rigger".to_string() });
+    assert_eq!(frame, Frames::Text { id: "IT2".to_string(), size: 13, flags: 0, text: "Bleak".to_string() });
     let (input, frame) = text_frame(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "ALB".to_string(), size: 11, flags: 0, text: "Nova".to_string() });
+    assert_eq!(frame, Frames::Text { id: "ALB".to_string(), size: 23, flags: 0, text: "Body Count".to_string() });
     let (input, frame) = text_frame(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "IT3".to_string(), size: 3, flags: 0, text: "".to_string() });
-    let (input, frame) = text_frame(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "CON".to_string(), size: 15, flags: 0, text: "techno".to_string() });
 
     let (input, frame) = generic_frame(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, size: 40952, flags: _, data: _} => {
+    assert_matches!(frame, Frames::Frame{ id, size: 26524, flags: _, data: _} => {
       assert_eq!(id, "APIC".to_string());
       // TODO: compare actual picture
       // if let Frames::Frame { id, size, flags, data } = frame {
       //   let mut out = File::create("APIC.bin").unwrap();
       //   out.write(data).unwrap();
       // }
-    });
-
-    let (input, frame) = generic_frame(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, size: 557, flags: _, data: _}=> {
-      assert_eq!(id, "GEOB".to_string());
-    });
-
-    let (input, frame) = generic_frame(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, size: 353, flags: _, data: _}=> {
-      assert_eq!(id, "GEOB".to_string());
-    });
-
-    let (input, frame) = generic_frame(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, size: 321, flags: _, data: _}=> {
-      assert_eq!(id, "GEOB".to_string());
     });
 
     let (input, frame) = generic_frame(&input).ok().unwrap();
@@ -665,7 +545,7 @@ mod tests {
     assert_eq!(frame, Frames::Text { id: "KEY".to_string(), size: 3, flags: 0, text: "4A".to_string() });
 
     let (input, frame) = text_frame(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "BPM".to_string(), size: 4, flags: 0, text: "142".to_string() });
+    assert_eq!(frame, Frames::Text { id: "BPM".to_string(), size: 4, flags: 0, text: "100".to_string() });
 
     //      
     let (input, frame) = text_frame(&input).ok().unwrap();
@@ -682,11 +562,58 @@ mod tests {
     });
 
     let (input, frame) = generic_frame(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, size: 23214, flags: _, data: _}=> {
+    assert_matches!(frame, Frames::Frame{ id, size: 13789, flags: _, data: _}=> {
       assert_eq!(id, "GEOB".to_string());
     });
 
-    let (_input, frame) = padding(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Padding{ size: 1024});
+    let (_input, frame) = generic_frame(&input).ok().unwrap();
+    assert_matches!(frame, Frames::Frame{ id, size: 561, flags: _, data: _}=> {
+      assert_eq!(id, "GEOB".to_string());
+    });
+  }
+
+  #[test]
+  pub fn test_sum_frames() {
+    log_init();
+    let (rofile, _, _) = filenames("4bleak");
+
+    let tag = ID3Tag::read(&rofile).unwrap();
+    let sum = tag.frames.iter()
+      .fold(0u32, |sum, frame| sum + match frame {
+        Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
+        Frames::Text { id: _, size, flags: _, text: _ } => (10 + size),
+        Frames::Padding { size } => (0 + size),
+      });
+
+    assert_eq!(sum, 42316);
+
+    let _sum = tag.frames.iter()
+      .fold(0u32, |sum, frame| sum + match frame {
+        Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
+        Frames::Text { id: _, size: _, flags: _, text } => (10 + 1 + text.len() as u32),
+        Frames::Padding { size } => (0 + size),
+      });
+
+    let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67
+  }
+
+  fn filenames(base: &str) -> (String, String, String) {
+    (format!("{}.mp3", base), format!("{}-out.mp3", base), format!("{}-rw.mp3", base))
+  }
+
+  fn make_rwcopy(rofile: &str, rwfile: &str) {
+    fs::copy(&rofile, &rwfile).unwrap();
+    let mut perms = fs::metadata(&rwfile).unwrap().permissions();
+    perms.set_readonly(false);
+    fs::set_permissions(&rwfile, perms).unwrap();
+  }
+
+  fn mpck(filepath: &str) -> String {
+    let output = Command::new("mpck")
+      .arg(filepath)
+      .output()
+      .expect("failed to execute process");
+
+    String::from_utf8(output.stdout).unwrap().replace(filepath, "")
   }
 }

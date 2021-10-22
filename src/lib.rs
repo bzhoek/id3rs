@@ -211,6 +211,8 @@ pub struct ID3Tag {
   pub frames: Vec<Frames>,
 }
 
+const ID3HEADER_SIZE: u64 = 10;
+
 impl ID3Tag {
   pub fn read(filepath: &str) -> Result<ID3Tag> {
     let (mut file, header) = Self::read_header(filepath)?;
@@ -234,34 +236,6 @@ impl ID3Tag {
     Ok((file, header))
   }
 
-  pub fn fix_copy_error_with_padding(filepath: &str) -> Result<()> {
-    let mut file = OpenOptions::new().read(true).write(true).open(filepath)?;
-    let mut buffer = [0; 10];
-    file.read_exact(&mut buffer).unwrap();
-
-    let (_, header) = file_header(&buffer).map_err(|_| "Header error")?;
-    assert_eq!(header.version, 4);
-
-    let mut buffer = [0; 3];
-    file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
-    file.read_exact(&mut buffer)?;
-    if &buffer == b"\xFF\xFB\xE0" {
-      debug!("Checking padding {}...", filepath);
-      file.seek(SeekFrom::Start(header.tag_size as u64))?;
-      let mut buffer = [0; 10];
-      file.read_exact(&mut buffer)?;
-      if &buffer != b"\0\0\0\0\0\0\0\0\0\0" {
-        info!("Padding {}...", filepath);
-        file.seek(SeekFrom::Start(header.tag_size as u64))?;
-        let padding: [u8; 10] = [0; 10];
-        file.write(padding.as_ref())?;
-        file.sync_all()?
-      }
-    }
-
-    Ok(())
-  }
-
   pub fn write(&self, target: &str) -> Result<()> {
     let frames = self.frames.iter().filter(|f| match f {
       Frames::Text { id, .. } => {
@@ -279,29 +253,36 @@ impl ID3Tag {
 
     let mut out = if self.filepath == target {
       let mut tmp = File::create("stream.tmp")?;
-      file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
-      let mut buffer = [0; 3];
-      file.read_exact(&mut buffer)?;
-      if &buffer != b"\xFF\xFB\xE0" {
-        debug!("Trying earlier header");
-        file.seek(SeekFrom::Start(header.tag_size as u64))?;
-        file.read_exact(&mut buffer)?;
-        if &buffer != b"\xFF\xFB\xE0" {
-          error!("No MP3 header");
-          return Ok(());
-        }
-        file.seek(SeekFrom::Start(header.tag_size as u64))?;
-      } else {
-        file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
-      }
+      file.seek(SeekFrom::Start(ID3HEADER_SIZE + header.tag_size as u64))?; // skip header and tag
       std::io::copy(&mut file, &mut tmp)?;
-      OpenOptions::new().write(true).open(&self.filepath)?
+      OpenOptions::new().write(true).truncate(true).open(&self.filepath)?
     } else {
       File::create(target)?
     };
 
     out.write(b"ID3\x04\x00\x00FAKE")?;
 
+    ID3Tag::write_id3_frames(frames, &mut out);
+
+    let size = out.stream_position()? - ID3HEADER_SIZE;
+    debug!("new tag size {}", size);
+    let vec = as_syncsafe(size as u32);
+    out.seek(SeekFrom::Start(6))?;
+    out.write(&*vec)?;
+    out.seek(SeekFrom::Start(ID3HEADER_SIZE + size))?;
+
+    if self.filepath == target {
+      let mut tmp = File::open("stream.tmp")?;
+      std::io::copy(&mut tmp, &mut out)?;
+    } else {
+      file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
+      std::io::copy(&mut file, &mut out)?;
+    };
+
+    Ok(())
+  }
+
+  fn write_id3_frames(frames: Vec<&Frames>, out: &mut File) -> Result<()> {
     for frame in frames.iter() {
       match frame {
         Frames::Frame { id, size, flags, data } => {
@@ -338,23 +319,6 @@ impl ID3Tag {
         _ => {}
       }
     }
-
-    let size = out.stream_position()? - 10;
-    // tag size excludes header
-    debug!("new tag size {}", size);
-    let vec = as_syncsafe(size as u32);
-    out.seek(SeekFrom::Start(6))?;
-    out.write(&*vec)?;
-    out.seek(SeekFrom::Start(10 + size))?;
-
-    if self.filepath == target {
-      let mut tmp = File::open("stream.tmp")?;
-      std::io::copy(&mut tmp, &mut out)?;
-    } else {
-      file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
-      std::io::copy(&mut file, &mut out)?;
-    };
-
     Ok(())
   }
 
@@ -449,6 +413,7 @@ mod tests {
   use std::fs;
   use std::fs::File;
   use std::io::Read;
+  use std::process::Command;
 
   use assert_matches::assert_matches;
 
@@ -493,24 +458,6 @@ mod tests {
   }
 
   #[test]
-  pub fn test_reading() {
-    log_init();
-
-    let tag = ID3Tag::read("/Users/bas/OneDrive/PioneerDJ/liked/0. Rain -- Komputer [73160775].mp3").unwrap();
-    assert_eq!(tag.frames.len(), 20);
-  }
-
-  #[test]
-  pub fn test_change_copy() {
-    log_init();
-
-    let mut tag = ID3Tag::read("oil-rigger-v24-ro.mp3").unwrap();
-    tag.set_title("Roil Igger");
-    tag.set_extended_text("EnergyLevel", "99");
-    tag.write("oil-rigger-out.mp3").unwrap();
-  }
-
-  #[test]
   pub fn test_extended_text() {
     log_init();
 
@@ -541,26 +488,31 @@ mod tests {
   pub fn test_title() {
     log_init();
 
-    let tag = ID3Tag::read("/Users/bas/OneDrive/PioneerDJ/minimal/0. Applause -- Rossi. [901764012].mp3").unwrap();
+    let tag = ID3Tag::read("bleak.mp3").unwrap();
     assert_eq!(tag.title(), Some(" 7a E  Applause".to_string()));
   }
 
   #[test]
-  pub fn test_repairing_copy() {
+  pub fn test_change_copy() {
     log_init();
 
-    fs::copy("fixing-ro.mp3", "fixing-rw.mp3").unwrap();
-    let tag = ID3Tag::read("fixing-ro.mp3").unwrap();
-    tag.write("fixing-repair.mp3").unwrap();
+    let infile = "4bleak.mp3";
+    let outfile = "4bleak-out.mp3";
+
+    let mut tag = ID3Tag::read(infile).unwrap();
+    tag.set_title("Bleek");
+    tag.set_extended_text("EnergyLevel", "99");
+    tag.write(outfile).unwrap();
+    assert_eq!(mpck(infile), mpck(outfile));
   }
 
-  #[test]
-  pub fn test_repairing_inplace() {
-    log_init();
+  fn mpck(filepath: &str) -> String {
+    let output = Command::new("mpck")
+      .arg(filepath)
+      .output()
+      .expect("failed to execute process");
 
-    fs::copy("fixing-ro.mp3", "fixing-rw.mp3").unwrap();
-    let tag = ID3Tag::read("fixing-rw.mp3").unwrap();
-    tag.write("fixing-rw.mp3").unwrap();
+    String::from_utf8(output.stdout).unwrap().replace(filepath, "")
   }
 
   #[test]
@@ -637,31 +589,6 @@ mod tests {
 
     let (_, result) = all_frames(&input).ok().unwrap();
     assert_eq!(17, result.len());
-  }
-
-  #[test]
-  fn test_offset_fix() {
-    let filepath = "/Users/bas/OneDrive/PioneerDJ/discover/DW202141/24. Positive Energy Forever -- Mall Grab [1386413292].mp3";
-    let mut file = OpenOptions::new().read(true).write(true).open(filepath).unwrap();
-    let mut buffer = [0; 10];
-    file.read_exact(&mut buffer).unwrap();
-
-    let (_, header) = file_header(&buffer).ok().unwrap();
-    assert_eq!(header, Header { version: 4, revision: 0, flags: 0, tag_size: 101535 });
-
-    file.seek(SeekFrom::Start(10 + header.tag_size as u64)).unwrap();
-    file.read_exact(&mut buffer).unwrap();
-    if &buffer == b"\xFF\xFB\xE0\0\0\0\0\0\0\0" {
-      debug!("Checking padding {}...", filepath);
-      file.seek(SeekFrom::Start(header.tag_size as u64)).unwrap();
-      file.read_exact(&mut buffer).unwrap();
-      if &buffer == b"\0\0\0\0\0\0\0\0\0\0" {
-        info!("Padding {}...", filepath);
-        file.seek(SeekFrom::Start(header.tag_size as u64)).unwrap();
-        let padding: [u8; 10] = [0; 10];
-        file.write(padding.as_ref()).unwrap();
-      }
-    }
   }
 
   #[test]

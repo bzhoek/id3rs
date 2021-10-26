@@ -1,5 +1,3 @@
-mod mp3;
-
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -15,6 +13,8 @@ use nom::multi::{count, fold_many_m_n, many_till};
 use nom::number::complete::be_u32;
 use nom::number::streaming::{be_u16, be_u8, le_u16};
 use nom::sequence::tuple;
+
+mod mp3;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Header {
@@ -43,6 +43,95 @@ pub enum Frames {
   },
 }
 
+fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
+  map(
+    many_till(
+      alt((padding, text_frame_v23, generic_frame_v23)), eof),
+    |(frames, _)| frames)(input)
+}
+
+fn all_frames_v24(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
+  map(
+    many_till(
+      alt((padding, text_frame_v24, generic_frame_v24)), eof),
+    |(frames, _)| frames)(input)
+}
+
+fn text_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+  alt((text_frame_utf8_v23, text_frame_utf16_v23))(input)
+}
+
+fn text_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+  alt((text_frame_utf8_v24, text_frame_utf16_v24, ))(input)
+}
+
+fn text_frame_utf8_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+  let (input, (_, id, size, flags)) = text_header_v23(input)?;
+  let (input, (_, text)) =
+    tuple((
+      alt((tag(b"\x00"), tag(b"\x03"))),
+      count(be_u8, (size - 1) as usize)
+    ))(input)?;
+  let text = String::from_utf8(text).unwrap().replace("\u{0}", "\n");
+  debug!("utf8v23 {} {} {}", id, size, text);
+  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
+}
+
+fn text_frame_utf8_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+  let (input, (_, id, size, flags)) = text_header_v24(input)?;
+  let (input, (_, text)) =
+    tuple((
+      alt((tag(b"\x00"), tag(b"\x03"))),
+      count(be_u8, (size - 1) as usize)
+    ))(input)?;
+  let text = String::from_utf8(text).unwrap().replace("\u{0}", "\n");
+  debug!("utf8 {} {} {}", id, size, text);
+  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
+}
+
+fn text_frame_utf16_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+  let (input, (_, id, size, flags)) = text_header_v23(input)?;
+  let (input, (_, text)) =
+    tuple((
+      tag(b"\x01\xff\xfe"),
+      count(le_u16, (size - 3) as usize / 2)
+    ))(input)?;
+  let text = String::from_utf16(&*text).unwrap()
+    .replace("\u{0000}", "\n").replace("\u{feff}", "");
+  debug!("utf16v23 {} {} {}", id, size, text);
+  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
+}
+
+fn text_frame_utf16_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+  let (input, (_, id, size, flags)) = text_header_v24(input)?;
+  debug!("utf16 {} {}", id, size);
+  let (input, (_, text)) =
+    tuple((
+      tag(b"\x01\xff\xfe"),
+      count(le_u16, (size - 3) as usize / 2)
+    ))(input)?;
+  let text: Vec<u16> = text.into_iter().filter(|w| *w != 0xfeffu16).collect();
+  let text = String::from_utf16(&*text).unwrap().replace("\u{0000}", "\n");
+  debug!("utf16 {}", text);
+  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
+}
+
+fn generic_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+  let (input, (id, size, flags)) =
+    tuple((id_as_str, be_u32, be_u16))(input)?;
+  debug!("frame {} {}", id, size);
+  let (input, data) = take(size)(input)?;
+  Ok((input, Frames::Frame { id: id.to_string(), size, flags, data: data.into() }))
+}
+
+fn generic_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+  let (input, (id, size, flags)) =
+    tuple((id_as_str, syncsafe, be_u16))(input)?;
+  debug!("frame {} {}", id, size);
+  let (input, data) = take(size)(input)?;
+  Ok((input, Frames::Frame { id: id.to_string(), size, flags, data: data.into() }))
+}
+
 fn file_header(input: &[u8]) -> IResult<&[u8], Header> {
   let (input, (_, version, revision, flags, tag_size))
     = tuple((tag("ID3"), be_u8, be_u8, be_u8, syncsafe))(input)?;
@@ -65,104 +154,12 @@ fn syncsafe(input: &[u8]) -> IResult<&[u8], u32> {
     |acc, byte| acc << 7 | (byte as u32))(input)
 }
 
-fn generic_frame(input: &[u8]) -> IResult<&[u8], Frames> {
-  let (input, (id, size, flags)) =
-    tuple((id_as_str, syncsafe, be_u16))(input)?;
-  debug!("frame {} {}", id, size);
-  let (input, data) = take(size)(input)?;
-  Ok((input, Frames::Frame { id: id.to_string(), size, flags, data: data.into() }))
-}
-
-fn text_header(input: &[u8]) -> IResult<&[u8], (&[u8], &str, u32, u16)> {
-  tuple((
-    tag("T"),
-    map(
-      take(3u8),
-      |res| from_utf8(res).unwrap(),
-    ),
-    syncsafe,
-    be_u16
-  ))(input)
-}
-
-fn text_frame_utf16(input: &[u8]) -> IResult<&[u8], Frames> {
-  let (input, (_, id, size, flags)) = text_header(input)?;
-  debug!("utf16 {} {}", id, size);
-  let (input, (_, text)) =
-    tuple((
-      tag(b"\x01\xff\xfe"),
-      count(le_u16, (size - 3) as usize / 2)
-    ))(input)?;
-  let text: Vec<u16> = text.into_iter().filter(|w| *w != 0xfeffu16).collect();
-  let text = String::from_utf16(&*text).unwrap().replace("\u{0000}", "\n");
-  debug!("utf16 {}", text);
-  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
-}
-
-fn text_frame_utf8(input: &[u8]) -> IResult<&[u8], Frames> {
-  let (input, (_, id, size, flags)) = text_header(input)?;
-  let (input, (_, text)) =
-    tuple((
-      alt((tag(b"\x00"), tag(b"\x03"))),
-      count(be_u8, (size - 1) as usize)
-    ))(input)?;
-  let text = String::from_utf8(text).unwrap().replace("\u{0}", "\n");
-  debug!("utf8 {} {} {}", id, size, text);
-  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
-}
-
-fn text_frame(input: &[u8]) -> IResult<&[u8], Frames> {
-  alt((text_frame_utf8, text_frame_utf16, ))(input)
-}
 
 fn padding(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, pad) =
     many_till(tag(b"\x00"), eof)
       (input)?;
   Ok((input, Frames::Padding { size: pad.0.len() as u32 }))
-}
-
-fn all_frames(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
-  map(
-    many_till(
-      alt((padding, text_frame, generic_frame)), eof),
-    |(frames, _)| frames)(input)
-}
-
-fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
-  map(
-    many_till(
-      alt((padding, text_frame_v23, generic_frame_v23)), eof),
-    |(frames, _)| frames)(input)
-}
-
-fn text_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
-  alt((text_frame_utf8_v23, text_frame_utf16_v23))(input)
-}
-
-fn text_frame_utf8_v23(input: &[u8]) -> IResult<&[u8], Frames> {
-  let (input, (_, id, size, flags)) = text_header_v23(input)?;
-  let (input, (_, text)) =
-    tuple((
-      alt((tag(b"\x00"), tag(b"\x03"))),
-      count(be_u8, (size - 1) as usize)
-    ))(input)?;
-  let text = String::from_utf8(text).unwrap().replace("\u{0}", "\n");
-  debug!("utf8v23 {} {} {}", id, size, text);
-  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
-}
-
-fn text_frame_utf16_v23(input: &[u8]) -> IResult<&[u8], Frames> {
-  let (input, (_, id, size, flags)) = text_header_v23(input)?;
-  let (input, (_, text)) =
-    tuple((
-      tag(b"\x01\xff\xfe"),
-      count(le_u16, (size - 3) as usize / 2)
-    ))(input)?;
-  let text = String::from_utf16(&*text).unwrap()
-    .replace("\u{0000}", "\n").replace("\u{feff}", "");
-  debug!("utf16v23 {} {} {}", id, size, text);
-  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
 }
 
 fn text_header_v23(input: &[u8]) -> IResult<&[u8], (&[u8], &str, u32, u16)> {
@@ -177,12 +174,16 @@ fn text_header_v23(input: &[u8]) -> IResult<&[u8], (&[u8], &str, u32, u16)> {
   ))(input)
 }
 
-fn generic_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
-  let (input, (id, size, flags)) =
-    tuple((id_as_str, be_u32, be_u16))(input)?;
-  debug!("frame {} {}", id, size);
-  let (input, data) = take(size)(input)?;
-  Ok((input, Frames::Frame { id: id.to_string(), size, flags, data: data.into() }))
+fn text_header_v24(input: &[u8]) -> IResult<&[u8], (&[u8], &str, u32, u16)> {
+  tuple((
+    tag("T"),
+    map(
+      take(3u8),
+      |res| from_utf8(res).unwrap(),
+    ),
+    syncsafe,
+    be_u16
+  ))(input)
 }
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -200,10 +201,10 @@ impl ID3Tag {
     let mut input = vec![0u8; header.tag_size as usize];
     file.read_exact(&mut input).unwrap();
 
-    let (_, result) = if header.version == 3 {
-      all_frames_v23(&input).map_err(|_| "Frames error")?
-    } else {
-      all_frames(&input).map_err(|_| "Frames error")?
+    let (_, result) = match header.version {
+      3 => all_frames_v23(&input).map_err(|_| "Frames error")?,
+      4 => all_frames_v24(&input).map_err(|_| "Frames error")?,
+      v => Err(format!("Invalid version: {}", v))?
     };
 
     Ok(ID3Tag { filepath: filepath.to_string(), frames: result })
@@ -418,6 +419,21 @@ mod tests {
   use super::*;
 
   #[test]
+  pub fn test_invalid_version() {
+    let (rofile, _, _) = filenames("5eep");
+    let result = ID3Tag::read(&rofile).err().unwrap().to_string();
+    assert_eq!(result, "Invalid version: 5".to_string());
+  }
+
+  #[test]
+  pub fn test_user_text() {
+    log_init();
+    let (rofile, _, _) = filenames("3eep");
+    let tag = ID3Tag::read(&rofile).unwrap();
+    assert_eq!(tag.extended_text("Hello"), Some("World".to_string()));
+  }
+
+  #[test]
   pub fn test_utf8_energy_level() {
     log_init();
     let (rofile, _, _) = filenames("4bleak");
@@ -551,7 +567,7 @@ mod tests {
     let mut input = vec![0u8; header.tag_size as usize];
     file.read_exact(&mut input).unwrap();
 
-    let (_, result) = all_frames(&input).ok().unwrap();
+    let (_, result) = all_frames_v24(&input).ok().unwrap();
     assert_eq!(14, result.len());
   }
 
@@ -570,16 +586,16 @@ mod tests {
     let mut input = vec![0u8; header.tag_size as usize];
     file.read_exact(&mut input).unwrap();
 
-    let (input, frame) = text_frame(&input).ok().unwrap();
+    let (input, frame) = text_frame_v24(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "PE1".to_string(), size: 25, flags: 0, text: "Maenad Veyl".to_string() });
-    let (input, frame) = text_frame(&input).ok().unwrap();
+    let (input, frame) = text_frame_v24(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "IT2".to_string(), size: 13, flags: 0, text: "Bleak".to_string() });
-    let (input, frame) = text_frame(&input).ok().unwrap();
+    let (input, frame) = text_frame_v24(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "ALB".to_string(), size: 23, flags: 0, text: "Body Count".to_string() });
-    let (input, frame) = text_frame(&input).ok().unwrap();
+    let (input, frame) = text_frame_v24(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "IT3".to_string(), size: 3, flags: 0, text: "".to_string() });
 
-    let (input, frame) = generic_frame(&input).ok().unwrap();
+    let (input, frame) = generic_frame_v24(&input).ok().unwrap();
     assert_matches!(frame, Frames::Frame{ id, size: 26524, flags: _, data: _} => {
       assert_eq!(id, "APIC".to_string());
       // TODO: compare actual picture
@@ -589,38 +605,38 @@ mod tests {
       // }
     });
 
-    let (input, frame) = generic_frame(&input).ok().unwrap();
+    let (input, frame) = generic_frame_v24(&input).ok().unwrap();
     assert_matches!(frame, Frames::Frame{ id, size: 11, flags: _, data: _}=> {
       assert_eq!(id, "COMM".to_string());
     });
 
     //         4A
-    let (input, frame) = text_frame(&input).ok().unwrap();
+    let (input, frame) = text_frame_v24(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "KEY".to_string(), size: 3, flags: 0, text: "4A".to_string() });
 
-    let (input, frame) = text_frame(&input).ok().unwrap();
+    let (input, frame) = text_frame_v24(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "BPM".to_string(), size: 4, flags: 0, text: "100".to_string() });
 
     //      
-    let (input, frame) = text_frame(&input).ok().unwrap();
+    let (input, frame) = text_frame_v24(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "XXX".to_string(), size: 14, flags: 0, text: "EnergyLevel\n6".to_string() });
 
-    let (input, frame) = generic_frame(&input).ok().unwrap();
+    let (input, frame) = generic_frame_v24(&input).ok().unwrap();
     assert_matches!(frame, Frames::Frame{ id, size: 92, flags: _, data: _}=> {
       assert_eq!(id, "GEOB".to_string());
     });
 
-    let (input, frame) = generic_frame(&input).ok().unwrap();
+    let (input, frame) = generic_frame_v24(&input).ok().unwrap();
     assert_matches!(frame, Frames::Frame{ id, size: 100, flags: _, data: _}=> {
       assert_eq!(id, "GEOB".to_string());
     });
 
-    let (input, frame) = generic_frame(&input).ok().unwrap();
+    let (input, frame) = generic_frame_v24(&input).ok().unwrap();
     assert_matches!(frame, Frames::Frame{ id, size: 13789, flags: _, data: _}=> {
       assert_eq!(id, "GEOB".to_string());
     });
 
-    let (_input, frame) = generic_frame(&input).ok().unwrap();
+    let (_input, frame) = generic_frame_v24(&input).ok().unwrap();
     assert_matches!(frame, Frames::Frame{ id, size: 561, flags: _, data: _}=> {
       assert_eq!(id, "GEOB".to_string());
     });

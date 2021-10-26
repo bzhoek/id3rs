@@ -1,6 +1,13 @@
-[Alternative](https://github.com/polyfloyd/rust-id3) that does not read all frames consistently, particularly the Mixed in Key `EnergyLevel` field.
+Alternative to [rust-id3](https://github.com/polyfloyd/rust-id3) that does not read all frames consistently, particularly the Mixed in Key `EnergyLevel` field.
+
+- [ ] https://mutagen-specs.readthedocs.io/en/latest/id3/id3v2.4.0-frames.html#general-encapsulated-object
+
+application/vnd.rekordbox.dat
 
 Reference documentation
+
+ID3 v2.3 is UTF-16, v2.4 heeft ook UTF-8. Oude hardware verwacht soms ID3v2.3 met UTF-16LE.
+[Unsynchronization can only be applied to the entire tag in 2.3, whereas you can apply it to individual frames in 2.4. This means that in 2.3, the tag size field is stored as syncsafe, while the frame sizes aren't. In 2.4 all sizes are stored as syncsafe.](https://hydrogenaud.io/index.php?topic=67145.msg602042#msg602042)
 
 * [ID3 tag version 2.3.0](https://id3.org/id3v2.3.0)
 * [ID3 tag version 2.4.0](https://mutagen-specs.readthedocs.io/en/latest/id3/id3v2.4.0-structure.html)

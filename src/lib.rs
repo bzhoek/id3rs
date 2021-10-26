@@ -1,3 +1,5 @@
+mod mp3;
+
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};

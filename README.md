@@ -47,3 +47,7 @@ Tests moeten niet [parallel](https://doc.rust-lang.org/book/ch11-02-running-test
 ```shell
 cargo test -- --test-threads=1
 ```
+
+### Ring buffer
+
+Telkens 1K lezen en een subset minus frame header doorzoeken, daarna seek - frame header en volgende 1K lezen.

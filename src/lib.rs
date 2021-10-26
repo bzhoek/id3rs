@@ -38,6 +38,12 @@ pub enum Frames {
     flags: u16,
     text: String,
   },
+  Object {
+    id: String,
+    size: u32,
+    flags: u16,
+    data: Vec<u8>,
+  },
   Padding {
     size: u32
   },
@@ -314,6 +320,16 @@ impl ID3Tag {
     }).flatten()
   }
 
+  pub fn object(&self, identifier: &str) -> Option<&Vec<u8>> {
+    self.frames.iter().find(|f| match f {
+      Frames::Object { id, size: _, flags: _, data: _ } => (id == identifier),
+      _ => false
+    }).map(|f| match f {
+      Frames::Object { id: _, size: _, flags: _, data } => Some(data),
+      _ => None
+    }).flatten()
+  }
+
   pub fn extended_text(&self, description: &str) -> Option<String> {
     let terminated = format!("{}\n", description);
     self.frames.iter().find(|f| match f {
@@ -431,6 +447,14 @@ mod tests {
     let (rofile, _, _) = filenames("3eep");
     let tag = ID3Tag::read(&rofile).unwrap();
     assert_eq!(tag.extended_text("Hello"), Some("World".to_string()));
+  }
+
+  #[test]
+  pub fn test_geob() {
+    log_init();
+    let (rofile, _, _) = filenames("3eep");
+    let tag = ID3Tag::read(&rofile).unwrap();
+    assert_eq!(tag.object("ANLZ0000.DAT"), Some(&vec![]));
   }
 
   #[test]
@@ -652,6 +676,7 @@ mod tests {
       .fold(0u32, |sum, frame| sum + match frame {
         Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
         Frames::Text { id: _, size, flags: _, text: _ } => (10 + size),
+        Frames::Object { id: _, size, flags: _, data: _ } => (10 + size),
         Frames::Padding { size } => (0 + size),
       });
 
@@ -661,6 +686,7 @@ mod tests {
       .fold(0u32, |sum, frame| sum + match frame {
         Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
         Frames::Text { id: _, size: _, flags: _, text } => (10 + 1 + text.len() as u32),
+        Frames::Object { id: _, size, flags: _, data: _ } => (10 + size),
         Frames::Padding { size } => (0 + size),
       });
 

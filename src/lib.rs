@@ -125,6 +125,7 @@ impl ID3Tag {
         Frames::Frame { id, size, flags, data } => {
           out.write(id.as_ref())?;
           let vec = as_syncsafe(*size);
+          debug!("frame {} len {}", id, size);
           out.write(&*vec)?;
           out.write(&flags.to_be_bytes())?;
           out.write(&data)?;
@@ -133,6 +134,7 @@ impl ID3Tag {
           let text: Vec<u8> = text.encode_utf16().map(|w| w.to_le_bytes()).flatten().collect();
           let len = text.len() as u32 + 3;
           let vec = as_syncsafe(len);
+          debug!("text {} len {}", id, len);
           out.write(b"T")?;
           out.write(id.as_ref())?;
           out.write(&*vec)?;
@@ -143,6 +145,7 @@ impl ID3Tag {
         Frames::ExtendedText { id, size: _, flags, description, value } => {
           let len = description.len() + value.len() + 2;
           let vec = as_syncsafe(len as u32);
+          debug!("extended {} len {}", id, len);
           out.write(id.as_ref())?;
           out.write(&*vec)?;
           out.write(&flags.to_be_bytes())?;
@@ -150,6 +153,22 @@ impl ID3Tag {
           out.write(description.as_bytes())?;
           out.write(b"\x00")?;
           out.write(value.as_bytes())?;
+        }
+        Frames::Object { id, size, flags, mime_type, filename, description, data } => {
+          let len = mime_type.len() + filename.len() + description.len() + 4 + data.len();
+          let vec = as_syncsafe(len as u32);
+          out.write(id.as_ref())?;
+          debug!("object {} len {}", id, len);
+          out.write(&*vec)?;
+          out.write(&flags.to_be_bytes())?;
+          out.write(b"\x03")?;
+          out.write(mime_type.as_bytes())?;
+          out.write(b"\x00")?;
+          out.write(filename.as_bytes())?;
+          out.write(b"\x00")?;
+          out.write(description.as_bytes())?;
+          out.write(b"\x00")?;
+          out.write(data)?;
         }
         _ => {}
       }
@@ -221,6 +240,25 @@ impl ID3Tag {
 
   pub fn set_genre(&mut self, text: &str) {
     self.set_text("CON", text);
+  }
+
+  fn set_object(&mut self, name: &str, mime_type: &str, description: &str, data: &[u8]) {
+    if let Some(index) = self.frames.iter().position(|frame|
+      match frame {
+        Frames::Object { id, filename, .. } => id == "GEOB" && filename == name,
+        _ => false
+      }) {
+      self.frames.remove(index);
+    }
+    self.frames.push(Frames::Object {
+      id: "GEOB".to_string(),
+      size: 0,
+      flags: 0,
+      filename: name.to_string(),
+      description: description.to_string(),
+      mime_type: mime_type.to_string(),
+      data: Vec::from(data),
+    })
   }
 
   fn set_text(&mut self, id3: &str, change: &str) {
@@ -351,7 +389,23 @@ mod tests {
   }
 
   mod v24 {
+    use nom::AsBytes;
+
     use super::*;
+
+    #[test]
+    pub fn test_set_object() {
+      log_init();
+
+      let (rofile, _, rwfile) = filenames("4eep");
+      make_rwcopy(&rofile, &rwfile).unwrap();
+
+      let mut tag = ID3Tag::read(&rwfile).unwrap();
+
+      tag.set_object("HELLO.TXT", "text/plain", "Hello", &"Hello, world".as_bytes());
+      tag.set_extended_text("EnergyLevel", "99");
+      tag.write(&rwfile).unwrap();
+    }
 
     #[test]
     pub fn test_change_extended_text() {

@@ -5,10 +5,11 @@ use std::process::Command;
 use std::str::from_utf8;
 
 use log::{debug, LevelFilter};
+use nom::{AsBytes, IResult};
 use nom::branch::alt;
+use nom::bytes::complete::take_until;
 use nom::bytes::streaming::{tag, take};
 use nom::combinator::{eof, map};
-use nom::IResult;
 use nom::multi::{count, fold_many_m_n, many_till};
 use nom::number::complete::be_u32;
 use nom::number::streaming::{be_u16, be_u8, le_u16};
@@ -42,6 +43,9 @@ pub enum Frames {
     id: String,
     size: u32,
     flags: u16,
+    mime_type: String,
+    filename: String,
+    description: String,
     data: Vec<u8>,
   },
   Padding {
@@ -109,17 +113,6 @@ fn text_frame_utf16_v24(input: &[u8]) -> IResult<&[u8], Frames> {
   Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
 }
 
-fn get_utf16_text(input: &[u8], size: u32) -> IResult<&[u8], String> {
-  let (input, (_, text)) =
-    tuple((
-      tag(b"\x01\xff\xfe"),
-      count(le_u16, (size - 3) as usize / 2)
-    ))(input)?;
-  let text = String::from_utf16(&*text).unwrap()
-    .replace("\u{0000}", "\n").replace("\u{feff}", "");
-  Ok((input, text))
-}
-
 fn generic_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, (id, size, flags)) =
     tuple((id_as_str, be_u32, be_u16))(input)?;
@@ -132,9 +125,46 @@ fn object_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, (id, size, flags)) =
     tuple((id_as_str, be_u32, be_u16))(input)?;
   debug!("object {} {}", id, size);
-  let (input, data) = take(size)(input)?;
-  Ok((input, Frames::Object { id: id.to_string(), size, flags, data: data.into() }))
+  let offset = input.len();
+  let (input, encoding) = be_u8(input)?;
+  let (input, mime_type) = null_terminated_utf8(input)?;
+  let (input, (filename, description)) = match encoding {
+    1 => { tuple((null_terminated_utf16, null_terminated_utf16))(input)? }
+    _ => { tuple((null_terminated_utf8, null_terminated_utf8))(input)? }
+  };
+
+  let data_size = size - (offset - input.len()) as u32;
+  debug!("mime {}, filename {}, size {}, description {}", mime_type, filename, data_size, description);
+  let (input, data) = take(data_size)(input)?;
+  Ok((input, Frames::Object { id: id.to_string(), size, flags, mime_type, filename, description, data: data.into() }))
 }
+
+fn null_terminated_utf8(input: &[u8]) -> IResult<&[u8], String> {
+  let (input, mime) = take_until(b"\0".as_bytes())(input)?;
+  let (input, _encoding) = be_u8(input)?;
+  let text = String::from_utf8(Vec::from(mime)).unwrap();
+  Ok((input, text))
+}
+
+fn null_terminated_utf16(input: &[u8]) -> IResult<&[u8], String> {
+  let (input, _bom) = tag(b"\xff\xfe")(input)?;
+  let (input, (words, _nul)) = many_till(le_u16, tag(b"\0\0"))(input)?;
+  let text = String::from_utf16(&words).unwrap();
+  debug!("utf16 {}", text);
+  Ok((input, text))
+}
+
+fn get_utf16_text(input: &[u8], size: u32) -> IResult<&[u8], String> {
+  let (input, (_, text)) =
+    tuple((
+      tag(b"\x01\xff\xfe"),
+      count(le_u16, (size - 3) as usize / 2)
+    ))(input)?;
+  let text = String::from_utf16(&*text).unwrap()
+    .replace("\u{0000}", "\n").replace("\u{feff}", "");
+  Ok((input, text))
+}
+
 
 fn generic_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, (id, size, flags)) =
@@ -325,14 +355,18 @@ impl ID3Tag {
     }).flatten()
   }
 
-  pub fn object(&self, identifier: &str) -> Option<&Vec<u8>> {
-    self.frames.iter().find(|f| match f {
-      Frames::Object { id, size: _, flags: _, data: _ } => (id == identifier),
+  pub fn objects(&self, identifier: &str) -> Vec<&Frames> {
+    self.frames.iter().filter(|f| match f {
+      Frames::Object { id, .. } => (id == identifier),
       _ => false
-    }).map(|f| match f {
-      Frames::Object { id: _, size: _, flags: _, data } => Some(data),
-      _ => None
-    }).flatten()
+    }).collect()
+  }
+
+  pub fn object_by_filename(&self, name: &str) -> Option<&Frames> {
+    self.frames.iter().find(|f| match f {
+      Frames::Object { id, filename, .. } => (id == "GEOB" && filename == name),
+      _ => false
+    })
   }
 
   pub fn extended_text(&self, description: &str) -> Option<String> {
@@ -439,6 +473,44 @@ mod tests {
 
   use super::*;
 
+  mod v23 {
+    use super::*;
+
+    #[test]
+    pub fn test_geobs() {
+      log_init();
+      let (rofile, _, _) = filenames("3eep");
+      let tag = ID3Tag::read(&rofile).unwrap();
+      let data = "Hello, world".as_bytes().to_vec();
+      assert_eq!(tag.objects("GEOB"), vec![&Frames::Object {
+        id: "GEOB".to_string(),
+        size: 121,
+        flags: 0,
+        mime_type: "application/vnd.rekordbox.dat".to_string(),
+        filename: "ANLZ0000.DAT".to_string(),
+        description: "Rekordbox Analysis Data".to_string(),
+        data,
+      }]);
+    }
+
+    #[test]
+    pub fn test_geob_filename() {
+      log_init();
+      let (rofile, _, _) = filenames("3eep");
+      let tag = ID3Tag::read(&rofile).unwrap();
+      let data = "Hello, world".as_bytes().to_vec();
+      let option = tag.object_by_filename("ANLZ0000.DAT");
+      assert_eq!(option, Some(&Frames::Object {
+        id: "GEOB".to_string(),
+        size: 121,
+        flags: 0,
+        mime_type: "application/vnd.rekordbox.dat".to_string(),
+        filename: "ANLZ0000.DAT".to_string(),
+        description: "Rekordbox Analysis Data".to_string(),
+        data,
+      }));
+    }
+  }
   #[test]
   pub fn test_invalid_version() {
     let (rofile, _, _) = filenames("5eep");
@@ -452,15 +524,6 @@ mod tests {
     let (rofile, _, _) = filenames("3eep");
     let tag = ID3Tag::read(&rofile).unwrap();
     assert_eq!(tag.extended_text("Hello"), Some("World".to_string()));
-  }
-
-  #[test]
-  #[ignore]
-  pub fn test_geob() {
-    log_init();
-    let (rofile, _, _) = filenames("3eep");
-    let tag = ID3Tag::read(&rofile).unwrap();
-    assert_eq!(tag.object("ANLZ0000.DAT"), Some(&vec![]));
   }
 
   #[test]
@@ -680,9 +743,9 @@ mod tests {
     let tag = ID3Tag::read(&rofile).unwrap();
     let sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
-        Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
-        Frames::Text { id: _, size, flags: _, text: _ } => (10 + size),
-        Frames::Object { id: _, size, flags: _, data: _ } => (10 + size),
+        Frames::Frame { size, .. } => (10 + size),
+        Frames::Text { size, .. } => (10 + size),
+        Frames::Object { size, .. } => (10 + size),
         Frames::Padding { size } => (0 + size),
       });
 
@@ -690,9 +753,9 @@ mod tests {
 
     let _sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
-        Frames::Frame { id: _, size, flags: _, data: _ } => (10 + size),
-        Frames::Text { id: _, size: _, flags: _, text } => (10 + 1 + text.len() as u32),
-        Frames::Object { id: _, size, flags: _, data: _ } => (10 + size),
+        Frames::Frame { size, .. } => (10 + size),
+        Frames::Text { text, .. } => (10 + 1 + text.len() as u32),
+        Frames::Object { size, .. } => (10 + size),
         Frames::Padding { size } => (0 + size),
       });
 

@@ -62,10 +62,7 @@ pub enum Frames {
 fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
   map(
     take(4u8),
-    |res| match from_utf8(res) {
-      Ok(id) => id,
-      Err(_) => "FAIL"
-    },
+    |res| from_utf8(res).unwrap(),
   )(input)
 }
 
@@ -102,10 +99,12 @@ fn extended_text_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
 
 fn extended_text_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
   let (input, (id, size, flags)) = tuple((tag("TXXX"), data_size, be_u16))(input)?;
-  debug!("extended {:?}", id);
+  let id = from_utf8(id).unwrap().to_string();
+  debug!("extended {}", id);
   let (input, (encoding, data)) = pair(be_u8, take(size - 1))(input)?;
   let (_data, (description, value)) = encoded_string_pair(encoding, data)?;
-  Ok((input, Frames::ExtendedText { id: "XXX".to_string(), size, flags, description, value }))
+  debug!("extended {} value {}", description, value);
+  Ok((input, Frames::ExtendedText { id, size, flags, description, value }))
 }
 
 fn encoded_string_pair(encoding: u8, data: &[u8]) -> IResult<&[u8], (String, String)> {
@@ -246,18 +245,6 @@ impl ID3Tag {
   }
 
   pub fn write(&self, target: &str) -> Result<()> {
-    let frames = self.frames.iter().filter(|f| match f {
-      Frames::Text { id, .. } => {
-        debug!("text {}", id);
-        id != "FAIL"
-      }
-      Frames::Frame { id, .. } => {
-        debug!("frame {}", id);
-        id != "FAIL"
-      }
-      _ => false
-    }).collect::<Vec<&Frames>>();
-
     let (mut file, header) = Self::read_header(&*self.filepath)?;
 
     let mut out = if self.filepath == target {
@@ -271,7 +258,7 @@ impl ID3Tag {
 
     out.write(b"ID3\x04\x00\x00FAKE")?;
 
-    ID3Tag::write_id3_frames(frames, &mut out)?;
+    ID3Tag::write_id3_frames(&self.frames, &mut out)?;
 
     let size = out.stream_position()? - ID3HEADER_SIZE;
     debug!("new tag size {}", size);
@@ -291,7 +278,7 @@ impl ID3Tag {
     Ok(())
   }
 
-  fn write_id3_frames(frames: Vec<&Frames>, out: &mut File) -> Result<()> {
+  fn write_id3_frames(frames: &Vec<Frames>, out: &mut File) -> Result<()> {
     for frame in frames.iter() {
       match frame {
         Frames::Frame { id, size, flags, data } => {
@@ -302,28 +289,26 @@ impl ID3Tag {
           out.write(&data)?;
         }
         Frames::Text { id, size: _, flags, text } => {
-          if id == "XXX" {
-            let string = text.replace("\n", "\u{0}");
-            let text: &[u8] = string.as_bytes();
-            let len = text.len() as u32 + 1;
-            let vec = as_syncsafe(len);
-            out.write(b"T")?;
-            out.write(id.as_ref())?;
-            out.write(&*vec)?;
-            out.write(&flags.to_be_bytes())?;
-            out.write(b"\x03")?;
-            out.write(&*text)?;
-          } else {
-            let text: Vec<u8> = text.encode_utf16().map(|w| w.to_le_bytes()).flatten().collect();
-            let len = text.len() as u32 + 3;
-            let vec = as_syncsafe(len);
-            out.write(b"T")?;
-            out.write(id.as_ref())?;
-            out.write(&*vec)?;
-            out.write(&flags.to_be_bytes())?;
-            out.write(b"\x01\xff\xfe")?;
-            out.write(&*text)?;
-          }
+          let text: Vec<u8> = text.encode_utf16().map(|w| w.to_le_bytes()).flatten().collect();
+          let len = text.len() as u32 + 3;
+          let vec = as_syncsafe(len);
+          out.write(b"T")?;
+          out.write(id.as_ref())?;
+          out.write(&*vec)?;
+          out.write(&flags.to_be_bytes())?;
+          out.write(b"\x01\xff\xfe")?;
+          out.write(&*text)?;
+        }
+        Frames::ExtendedText { id, size: _, flags, description, value } => {
+          let len = description.len() + value.len() + 2;
+          let vec = as_syncsafe(len as u32);
+          out.write(id.as_ref())?;
+          out.write(&*vec)?;
+          out.write(&flags.to_be_bytes())?;
+          out.write(b"\x03")?;
+          out.write(description.as_bytes())?;
+          out.write(b"\x00")?;
+          out.write(value.as_bytes())?;
         }
         _ => {}
       }
@@ -408,15 +393,15 @@ impl ID3Tag {
     self.frames.push(Frames::Text { id: id3.to_string(), size: 0, flags: 0, text: change.to_string() })
   }
 
-  pub fn set_extended_text(&mut self, description: &str, value: &str) {
+  pub fn set_extended_text(&mut self, name: &str, value: &str) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
-        Frames::Text { id, size: _, flags: _, text } => id == "XXX" && text.starts_with(description),
+        Frames::ExtendedText { description, .. } => description == name,
         _ => false
       }) {
       self.frames.remove(index);
     }
-    self.frames.push(Frames::Text { id: "XXX".to_string(), size: 0, flags: 0, text: format!("{}\n{}", description, value) })
+    self.frames.push(Frames::ExtendedText { id: "TXXX".to_string(), size: 0, flags: 0, description: name.to_string(), value: value.to_string() })
   }
 }
 
@@ -506,7 +491,7 @@ mod tests {
       let (rofile, _, _) = filenames("3eep");
       let tag = ID3Tag::read(&rofile).unwrap();
       assert_eq!(tag.extended_text_frame("Hello"), Some(&Frames::ExtendedText {
-        id: "XXX".to_string(),
+        id: "TXXX".to_string(),
         size: 12,
         flags: 0,
         description: "Hello".to_string(),
@@ -520,7 +505,7 @@ mod tests {
       let (rofile, _, _) = filenames("3eep-utf16");
       let tag = ID3Tag::read(&rofile).unwrap();
       assert_eq!(tag.extended_text_frame("Hello"), Some(&Frames::ExtendedText {
-        id: "XXX".to_string(),
+        id: "TXXX".to_string(),
         size: 23,
         flags: 0,
         description: "Hello".to_string(),
@@ -541,11 +526,29 @@ mod tests {
     use super::*;
 
     #[test]
+    pub fn test_change_extended_text() {
+      log_init();
+
+      let (rofile, _, rwfile) = filenames("4eep");
+      make_rwcopy(&rofile, &rwfile).unwrap();
+
+      let mut tag = ID3Tag::read(&rwfile).unwrap();
+      tag.set_extended_text("OriginalTitle", &tag.title().unwrap());
+      tag.set_extended_text("EnergyLevel", "99");
+      tag.write(&rwfile).unwrap();
+
+      let tag = ID3Tag::read(&rwfile).unwrap();
+      assert_eq!(tag.extended_text("OriginalTitle"), Some(&"Wild Eep".to_string()));
+      assert_eq!(tag.extended_text("EnergyLevel"), Some(&"99".to_string()));
+      assert_eq!(mpck(&rofile), mpck(&rwfile));
+    }
+
+    #[test]
     pub fn test_utf8_energy_level() {
       log_init();
-      let (rofile, _, _) = filenames("4bleak");
+      let (rofile, _, _) = filenames("4eep");
       let tag = ID3Tag::read(&rofile).unwrap();
-      assert_eq!(tag.extended_text("EnergyLevel"), Some(&"6".to_string()));
+      assert_eq!(tag.extended_text("Hello"), Some(&"World".to_string()));
     }
 
     #[test]
@@ -623,24 +626,6 @@ mod tests {
     tag.set_title("Bleek");
     tag.set_extended_text("EnergyLevel", "99");
     tag.write(&rwfile).unwrap();
-    assert_eq!(mpck(&rofile), mpck(&rwfile));
-  }
-
-  #[test]
-  pub fn test_change_extended_text() {
-    log_init();
-
-    let (rofile, _, rwfile) = filenames("4bleak");
-    make_rwcopy(&rofile, &rwfile).unwrap();
-
-    let mut tag = ID3Tag::read(&rwfile).unwrap();
-    tag.set_extended_text("OriginalTitle", &tag.title().unwrap());
-    tag.set_extended_text("EnergyLevel", "99");
-    tag.write(&rwfile).unwrap();
-
-    let tag = ID3Tag::read(&rwfile).unwrap();
-    assert_eq!(tag.extended_text("OriginalTitle"), Some(&"Bleak".to_string()));
-    assert_eq!(tag.extended_text("EnergyLevel"), Some(&"99".to_string()));
     assert_eq!(mpck(&rofile), mpck(&rwfile));
   }
 
@@ -727,7 +712,7 @@ mod tests {
 
     //      
     let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::ExtendedText { id: "XXX".to_string(), size: 14, flags: 0, description: "EnergyLevel".to_string(), value: "6".to_string() });
+    assert_eq!(frame, Frames::ExtendedText { id: "TXXX".to_string(), size: 14, flags: 0, description: "EnergyLevel".to_string(), value: "6".to_string() });
 
     let (input, frame) = generic_frame_v24(&input).ok().unwrap();
     assert_matches!(frame, Frames::Frame{ id, size: 92, flags: _, data: _}=> {

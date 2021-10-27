@@ -12,7 +12,7 @@ use nom::IResult;
 use nom::multi::{count, fold_many_m_n, many_till};
 use nom::number::complete::be_u32;
 use nom::number::streaming::{be_u16, be_u8, le_u16, le_u8};
-use nom::sequence::tuple;
+use nom::sequence::{pair, tuple};
 
 mod mp3;
 
@@ -69,35 +69,46 @@ fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
 fn all_frames_v24(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
   map(
     many_till(
-      alt((padding, text_frame_v24, generic_frame_v24)), eof),
+      alt((padding, extended_text_frame_v24, text_frame_v24, generic_frame_v24)), eof),
     |(frames, _)| frames)(input)
 }
 
 fn extended_text_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
-  let (input, (id, size, flags)) = frame_header_v23(input)?;
-  debug!("extended {:?}", id);
-  let (input, encoding) = be_u8(input)?;
-  let (input, data) = take(size - 1)(input)?;
-  let (_data, (description, value)) = match encoding {
-    1 => { tuple((null_terminated_utf16, null_terminated_utf16))(data)? }
-    _ => { tuple((terminated_utf8, terminated_utf8))(data)? }
-  };
-
-  Ok((input, Frames::ExtendedText {
-    id: "XXX".to_string(),
-    size,
-    flags,
-    description,
-    value,
-  }))
+  extended_text_frame(input, extended_text_header_v23)
 }
 
-fn frame_header_v23(input: &[u8]) -> IResult<&[u8], (&[u8], u32, u16)> {
-  tuple((
-    tag("TXXX"),
-    be_u32,
-    be_u16
-  ))(input)
+fn extended_text_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+  extended_text_frame(input, extended_text_header_v24)
+}
+
+fn extended_text_frame(input: &[u8], header: fn(&[u8]) -> IResult<&[u8], (&[u8], u32, u16)>) -> IResult<&[u8], Frames> {
+  let (input, (id, size, flags)) = header(input)?;
+  debug!("extended {:?}", id);
+  let (input, (encoding, data)) = pair(be_u8, take(size - 1))(input)?;
+  let (_data, (description, value)) = encoded_string_pair(encoding, data)?;
+  Ok((input, Frames::ExtendedText { id: "XXX".to_string(), size, flags, description, value }))
+}
+
+fn encoded_string_pair(encoding: u8, data: &[u8]) -> IResult<&[u8], (String, String)> {
+  match encoding {
+    1 => { tuple((terminated_utf16, terminated_utf16))(data) }
+    _ => { tuple((terminated_utf8, terminated_utf8))(data) }
+  }
+}
+
+fn encoded_string(encoding: u8, data: &[u8]) -> IResult<&[u8], String> {
+  match encoding {
+    1 => { terminated_utf16(data) }
+    _ => { terminated_utf8(data) }
+  }
+}
+
+fn extended_text_header_v23(input: &[u8]) -> IResult<&[u8], (&[u8], u32, u16)> {
+  tuple((tag("TXXX"), be_u32, be_u16))(input)
+}
+
+fn extended_text_header_v24(input: &[u8]) -> IResult<&[u8], (&[u8], u32, u16)> {
+  tuple((tag("TXXX"), syncsafe, be_u16))(input)
 }
 
 fn text_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
@@ -110,14 +121,16 @@ fn text_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
 
 fn text_frame_utf8_v23(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, (_, id, size, flags)) = text_header_v23(input)?;
-  let (input, text) = get_utf8_text(input, size)?;
+  let (input, (encoding, data)) = pair(be_u8, take(size - 1))(input)?;
+  let (_data, text) = encoded_string(encoding, data)?;
   debug!("utf8v23 {} {} {}", id, size, text);
   Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
 }
 
 fn text_frame_utf8_v24(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, (_, id, size, flags)) = text_header_v24(input)?;
-  let (input, text) = get_utf8_text(input, size)?;
+  let (input, (encoding, data)) = pair(be_u8, take(size - 1))(input)?;
+  let (_data, text) = encoded_string(encoding, data)?;
   debug!("utf8v24 {} {} {}", id, size, text);
   Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
 }
@@ -161,11 +174,7 @@ fn object_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
   let offset = input.len();
   let (input, encoding) = be_u8(input)?;
   let (input, mime_type) = terminated_utf8(input)?;
-  let (input, (filename, description)) = match encoding {
-    1 => { tuple((null_terminated_utf16, null_terminated_utf16))(input)? }
-    _ => { tuple((terminated_utf8, terminated_utf8))(input)? }
-  };
-
+  let (input, (filename, description)) = encoded_string_pair(encoding, input)?;
   let data_size = size - (offset - input.len()) as u32;
   debug!("mime {}, filename {}, size {}, description {}", mime_type, filename, data_size, description);
   let (input, data) = take(data_size)(input)?;
@@ -179,9 +188,9 @@ fn terminated_utf8(input: &[u8]) -> IResult<&[u8], String> {
   Ok((input, text))
 }
 
-fn null_terminated_utf16(input: &[u8]) -> IResult<&[u8], String> {
+fn terminated_utf16(input: &[u8]) -> IResult<&[u8], String> {
   let (input, _bom) = tag(b"\xff\xfe")(input)?;
-  let (input, (words, _nul)) = many_till(le_u16, tag(b"\0\0"))(input)?;
+  let (input, (words, _nul)) = many_till(le_u16, alt((eof, tag(b"\x00\x00"))))(input)?;
 
   let text = String::from_utf16(&words).unwrap();
   debug!("utf16 {}", text);
@@ -403,22 +412,18 @@ impl ID3Tag {
     })
   }
 
-  pub fn extended_text(&self, description: &str) -> Option<String> {
-    let terminated = format!("{}\n", description);
+  pub fn extended_text_frame(&self, name: &str) -> Option<&Frames> {
     self.frames.iter().find(|f| match f {
-      Frames::Text { id, size: _, flags: _, text } => (id == "XXX" && text.starts_with(&terminated)),
-      _ => false
-    }).map(|f| match f {
-      Frames::Text { id: _, size: _, flags: _, text } => Some(text[terminated.len()..].to_string()),
-      _ => None
-    }).flatten()
-  }
-
-  pub fn extended_text2(&self, name: &str) -> Option<&Frames> {
-    self.frames.iter().find(|f| match f {
-      Frames::ExtendedText { id, description, .. } => (id == "XXX" && description == name),
+      Frames::ExtendedText { description, .. } => (description == name),
       _ => false
     })
+  }
+
+  pub fn extended_text(&self, name: &str) -> Option<&String> {
+    self.extended_text_frame(name).map(|f| match f {
+      Frames::ExtendedText { value, .. } => Some(value),
+      _ => None
+    }).flatten()
   }
 
   pub fn title(&self) -> Option<String> {
@@ -557,7 +562,7 @@ mod tests {
       log_init();
       let (rofile, _, _) = filenames("3eep");
       let tag = ID3Tag::read(&rofile).unwrap();
-      assert_eq!(tag.extended_text2("Hello"), Some(&Frames::ExtendedText {
+      assert_eq!(tag.extended_text_frame("Hello"), Some(&Frames::ExtendedText {
         id: "XXX".to_string(),
         size: 12,
         flags: 0,
@@ -571,13 +576,14 @@ mod tests {
       log_init();
       let (rofile, _, _) = filenames("3eep-utf16");
       let tag = ID3Tag::read(&rofile).unwrap();
-      assert_eq!(tag.extended_text2("Hello"), Some(&Frames::ExtendedText {
+      assert_eq!(tag.extended_text_frame("Hello"), Some(&Frames::ExtendedText {
         id: "XXX".to_string(),
-        size: 12,
+        size: 23,
         flags: 0,
         description: "Hello".to_string(),
-        value: "World".to_string(),
+        value: "今日は".to_string(),
       }));
+      assert_eq!(tag.extended_text("Hello"), Some(&"今日は".to_string()));
     }
   }
 
@@ -588,27 +594,31 @@ mod tests {
     assert_eq!(result, "Invalid version: 5".to_string());
   }
 
-  #[test]
-  pub fn test_utf8_energy_level() {
-    log_init();
-    let (rofile, _, _) = filenames("4bleak");
-    let tag = ID3Tag::read(&rofile).unwrap();
-    assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
-  }
+  mod v24 {
+    use super::*;
 
-  #[test]
-  pub fn test_reading() {
-    log_init();
-    let (rofile, _, _) = filenames("4bleak");
-    let tag = ID3Tag::read(&rofile).unwrap();
+    #[test]
+    pub fn test_utf8_energy_level() {
+      log_init();
+      let (rofile, _, _) = filenames("4bleak");
+      let tag = ID3Tag::read(&rofile).unwrap();
+      assert_eq!(tag.extended_text("EnergyLevel"), Some(&"6".to_string()));
+    }
 
-    assert_eq!(tag.text("IT2"), Some("Bleak".to_string()));
-    assert_eq!(tag.extended_text("EnergyLevel"), Some("6".to_string()));
-    assert_eq!(tag.extended_text("OriginalTitle"), None);
-    assert_eq!(tag.title(), Some("Bleak".to_string()));
-    assert_eq!(tag.subtitle(), Some("".to_string()));
-    assert_eq!(tag.key(), Some("4A".to_string()));
-    assert_eq!(tag.artist(), Some("Maenad Veyl".to_string()));
+    #[test]
+    pub fn test_reading() {
+      log_init();
+      let (rofile, _, _) = filenames("4bleak");
+      let tag = ID3Tag::read(&rofile).unwrap();
+
+      assert_eq!(tag.text("IT2"), Some("Bleak".to_string()));
+      assert_eq!(tag.extended_text("EnergyLevel"), Some(&"6".to_string()));
+      assert_eq!(tag.extended_text("OriginalTitle"), None);
+      assert_eq!(tag.title(), Some("Bleak".to_string()));
+      assert_eq!(tag.subtitle(), Some("".to_string()));
+      assert_eq!(tag.key(), Some("4A".to_string()));
+      assert_eq!(tag.artist(), Some("Maenad Veyl".to_string()));
+    }
   }
 
   #[test]
@@ -686,8 +696,8 @@ mod tests {
     tag.write(&rwfile).unwrap();
 
     let tag = ID3Tag::read(&rwfile).unwrap();
-    assert_eq!(tag.extended_text("OriginalTitle"), Some("Bleak".to_string()));
-    assert_eq!(tag.extended_text("EnergyLevel"), Some("99".to_string()));
+    assert_eq!(tag.extended_text("OriginalTitle"), Some(&"Bleak".to_string()));
+    assert_eq!(tag.extended_text("EnergyLevel"), Some(&"99".to_string()));
     assert_eq!(mpck(&rofile), mpck(&rwfile));
   }
 
@@ -773,8 +783,8 @@ mod tests {
     assert_eq!(frame, Frames::Text { id: "BPM".to_string(), size: 4, flags: 0, text: "100".to_string() });
 
     //      
-    let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "XXX".to_string(), size: 14, flags: 0, text: "EnergyLevel\n6".to_string() });
+    let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
+    assert_eq!(frame, Frames::ExtendedText { id: "XXX".to_string(), size: 14, flags: 0, description: "EnergyLevel".to_string(), value: "6".to_string() });
 
     let (input, frame) = generic_frame_v24(&input).ok().unwrap();
     assert_matches!(frame, Frames::Frame{ id, size: 92, flags: _, data: _}=> {

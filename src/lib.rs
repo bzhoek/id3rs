@@ -9,7 +9,7 @@ use nom::branch::alt;
 use nom::bytes::streaming::{tag, take};
 use nom::combinator::{eof, map};
 use nom::IResult;
-use nom::multi::{count, fold_many_m_n, many_till};
+use nom::multi::{fold_many_m_n, many_till};
 use nom::number::complete::be_u32;
 use nom::number::streaming::{be_u16, be_u8, le_u16, le_u8};
 use nom::sequence::{pair, tuple};
@@ -59,6 +59,25 @@ pub enum Frames {
   },
 }
 
+fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
+  map(
+    take(4u8),
+    |res| match from_utf8(res) {
+      Ok(id) => id,
+      Err(_) => "FAIL"
+    },
+  )(input)
+}
+
+fn data_size_v24(input: &[u8]) -> IResult<&[u8], u32> {
+  fold_many_m_n(4, 4, be_u8, 0u32,
+    |acc, byte| acc << 7 | (byte as u32))(input)
+}
+
+fn data_size_v23(input: &[u8]) -> IResult<&[u8], u32> {
+  be_u32(input)
+}
+
 fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
   map(
     many_till(
@@ -69,20 +88,20 @@ fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
 fn all_frames_v24(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
   map(
     many_till(
-      alt((padding, extended_text_frame_v24, text_frame_v24, generic_frame_v24)), eof),
+      alt((padding, extended_text_frame_v24, text_frame_v24, object_frame_v24, generic_frame_v24)), eof),
     |(frames, _)| frames)(input)
 }
 
 fn extended_text_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
-  extended_text_frame(input, extended_text_header_v23)
+  extended_text_frame(input, data_size_v23)
 }
 
 fn extended_text_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
-  extended_text_frame(input, extended_text_header_v24)
+  extended_text_frame(input, data_size_v24)
 }
 
-fn extended_text_frame(input: &[u8], header: fn(&[u8]) -> IResult<&[u8], (&[u8], u32, u16)>) -> IResult<&[u8], Frames> {
-  let (input, (id, size, flags)) = header(input)?;
+fn extended_text_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
+  let (input, (id, size, flags)) = tuple((tag("TXXX"), data_size, be_u16))(input)?;
   debug!("extended {:?}", id);
   let (input, (encoding, data)) = pair(be_u8, take(size - 1))(input)?;
   let (_data, (description, value)) = encoded_string_pair(encoding, data)?;
@@ -103,82 +122,65 @@ fn encoded_string(encoding: u8, data: &[u8]) -> IResult<&[u8], String> {
   }
 }
 
-fn extended_text_header_v23(input: &[u8]) -> IResult<&[u8], (&[u8], u32, u16)> {
-  tuple((tag("TXXX"), be_u32, be_u16))(input)
-}
-
-fn extended_text_header_v24(input: &[u8]) -> IResult<&[u8], (&[u8], u32, u16)> {
-  tuple((tag("TXXX"), syncsafe, be_u16))(input)
-}
-
 fn text_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
-  alt((text_frame_utf8_v23, text_frame_utf16_v23))(input)
+  text_frame(input, data_size_v23)
 }
 
 fn text_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
-  alt((text_frame_utf8_v24, text_frame_utf16_v24, ))(input)
+  text_frame(input, data_size_v24)
 }
 
-fn text_frame_utf8_v23(input: &[u8]) -> IResult<&[u8], Frames> {
-  let (input, (_, id, size, flags)) = text_header_v23(input)?;
+fn text_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
+  let (input, (_, id, size, flags)) =
+    tuple((
+      tag("T"),
+      map(
+        take(3u8),
+        |res| from_utf8(res).unwrap(),
+      ),
+      data_size, be_u16))(input)?;
   let (input, (encoding, data)) = pair(be_u8, take(size - 1))(input)?;
   let (_data, text) = encoded_string(encoding, data)?;
   debug!("utf8v23 {} {} {}", id, size, text);
   Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
 }
 
-fn text_frame_utf8_v24(input: &[u8]) -> IResult<&[u8], Frames> {
-  let (input, (_, id, size, flags)) = text_header_v24(input)?;
-  let (input, (encoding, data)) = pair(be_u8, take(size - 1))(input)?;
-  let (_data, text) = encoded_string(encoding, data)?;
-  debug!("utf8v24 {} {} {}", id, size, text);
-  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
-}
-
-fn get_utf8_text(input: &[u8], size: u32) -> IResult<&[u8], String> {
-  let (input, (_, text)) =
-    tuple((
-      alt((tag(b"\x00"), tag(b"\x03"))),
-      count(be_u8, (size - 1) as usize)
-    ))(input)?;
-  let text = String::from_utf8(text).unwrap().replace("\u{0}", "\n");
-  Ok((input, text))
-}
-
-fn text_frame_utf16_v23(input: &[u8]) -> IResult<&[u8], Frames> {
-  let (input, (_, id, size, flags)) = text_header_v23(input)?;
-  let (input, text) = get_utf16_text(input, size)?;
-  debug!("utf16v23 {} {} {}", id, size, text);
-  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
-}
-
-fn text_frame_utf16_v24(input: &[u8]) -> IResult<&[u8], Frames> {
-  let (input, (_, id, size, flags)) = text_header_v24(input)?;
-  let (input, text) = get_utf16_text(input, size)?;
-  debug!("utf16v24 {} {} {}", id, size, text);
-  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
-}
-
 fn generic_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+  generic_frame(input, data_size_v23)
+}
+
+fn generic_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+  generic_frame(input, data_size_v24)
+}
+
+fn generic_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
   let (input, (id, size, flags)) =
-    tuple((id_as_str, be_u32, be_u16))(input)?;
+    tuple((id_as_str, data_size, be_u16))(input)?;
   debug!("frame {} {}", id, size);
   let (input, data) = take(size)(input)?;
   Ok((input, Frames::Frame { id: id.to_string(), size, flags, data: data.into() }))
 }
 
 fn object_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
-  let (input, (id, size, flags)) =
-    tuple((id_as_str, be_u32, be_u16))(input)?;
-  debug!("object {} {}", id, size);
+  object_frame(input, data_size_v23)
+}
+
+fn object_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+  object_frame(input, data_size_v24)
+}
+
+fn object_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
+  let (input, (id, size, flags)) = tuple((tag("GEOB"), data_size, be_u16))(input)?;
+  let id = from_utf8(id).unwrap().to_string();
+  debug!("object {:?} {}",  id, size);
   let offset = input.len();
   let (input, encoding) = be_u8(input)?;
   let (input, mime_type) = terminated_utf8(input)?;
   let (input, (filename, description)) = encoded_string_pair(encoding, input)?;
-  let data_size = size - (offset - input.len()) as u32;
-  debug!("mime {}, filename {}, size {}, description {}", mime_type, filename, data_size, description);
-  let (input, data) = take(data_size)(input)?;
-  Ok((input, Frames::Object { id: id.to_string(), size, flags, mime_type, filename, description, data: data.into() }))
+  let remaining = size - (offset - input.len()) as u32;
+  debug!("mime {}, filename {}, size {}, description {}", mime_type, filename, remaining, description);
+  let (input, data) = take(remaining)(input)?;
+  Ok((input, Frames::Object { id, size, flags, mime_type, filename, description, data: data.into() }))
 }
 
 fn terminated_utf8(input: &[u8]) -> IResult<&[u8], String> {
@@ -197,46 +199,11 @@ fn terminated_utf16(input: &[u8]) -> IResult<&[u8], String> {
   Ok((input, text))
 }
 
-fn get_utf16_text(input: &[u8], size: u32) -> IResult<&[u8], String> {
-  let (input, (_, text)) =
-    tuple((
-      tag(b"\x01\xff\xfe"),
-      count(le_u16, (size - 3) as usize / 2)
-    ))(input)?;
-  let text = String::from_utf16(&*text).unwrap()
-    .replace("\u{0000}", "\n").replace("\u{feff}", "");
-  Ok((input, text))
-}
-
-
-fn generic_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
-  let (input, (id, size, flags)) =
-    tuple((id_as_str, syncsafe, be_u16))(input)?;
-  debug!("frame {} {}", id, size);
-  let (input, data) = take(size)(input)?;
-  Ok((input, Frames::Frame { id: id.to_string(), size, flags, data: data.into() }))
-}
-
 fn file_header(input: &[u8]) -> IResult<&[u8], Header> {
   let (input, (_, version, revision, flags, tag_size))
-    = tuple((tag("ID3"), be_u8, be_u8, be_u8, syncsafe))(input)?;
+    = tuple((tag("ID3"), be_u8, be_u8, be_u8, data_size_v24))(input)?;
   debug!("ID3 {} tag size {}", version, tag_size);
   Ok((input, Header { version, revision, flags, tag_size }))
-}
-
-fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
-  map(
-    take(4u8),
-    |res| match from_utf8(res) {
-      Ok(id) => id,
-      Err(_) => "FAIL"
-    },
-  )(input)
-}
-
-fn syncsafe(input: &[u8]) -> IResult<&[u8], u32> {
-  fold_many_m_n(4, 4, be_u8, 0u32,
-    |acc, byte| acc << 7 | (byte as u32))(input)
 }
 
 fn padding(input: &[u8]) -> IResult<&[u8], Frames> {
@@ -244,30 +211,6 @@ fn padding(input: &[u8]) -> IResult<&[u8], Frames> {
     many_till(tag(b"\x00"), eof)
       (input)?;
   Ok((input, Frames::Padding { size: pad.0.len() as u32 }))
-}
-
-fn text_header_v23(input: &[u8]) -> IResult<&[u8], (&[u8], &str, u32, u16)> {
-  tuple((
-    tag("T"),
-    map(
-      take(3u8),
-      |res| from_utf8(res).unwrap(),
-    ),
-    be_u32,
-    be_u16
-  ))(input)
-}
-
-fn text_header_v24(input: &[u8]) -> IResult<&[u8], (&[u8], &str, u32, u16)> {
-  tuple((
-    tag("T"),
-    map(
-      take(3u8),
-      |res| from_utf8(res).unwrap(),
-    ),
-    syncsafe,
-    be_u16
-  ))(input)
 }
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;

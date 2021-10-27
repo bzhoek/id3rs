@@ -52,7 +52,7 @@ pub enum Frames {
 fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
   map(
     many_till(
-      alt((padding, text_frame_v23, generic_frame_v23)), eof),
+      alt((padding, text_frame_v23, object_frame_v23, generic_frame_v23)), eof),
     |(frames, _)| frames)(input)
 }
 
@@ -73,26 +73,26 @@ fn text_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
 
 fn text_frame_utf8_v23(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, (_, id, size, flags)) = text_header_v23(input)?;
-  let (input, (_, text)) =
-    tuple((
-      alt((tag(b"\x00"), tag(b"\x03"))),
-      count(be_u8, (size - 1) as usize)
-    ))(input)?;
-  let text = String::from_utf8(text).unwrap().replace("\u{0}", "\n");
+  let (input, text) = get_utf8_text(input, size)?;
   debug!("utf8v23 {} {} {}", id, size, text);
   Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
 }
 
 fn text_frame_utf8_v24(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, (_, id, size, flags)) = text_header_v24(input)?;
+  let (input, text) = get_utf8_text(input, size)?;
+  debug!("utf8 {} {} {}", id, size, text);
+  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
+}
+
+fn get_utf8_text(input: &[u8], size: u32) -> IResult<&[u8], String> {
   let (input, (_, text)) =
     tuple((
       alt((tag(b"\x00"), tag(b"\x03"))),
       count(be_u8, (size - 1) as usize)
     ))(input)?;
   let text = String::from_utf8(text).unwrap().replace("\u{0}", "\n");
-  debug!("utf8 {} {} {}", id, size, text);
-  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
+  Ok((input, text))
 }
 
 fn text_frame_utf16_v23(input: &[u8]) -> IResult<&[u8], Frames> {
@@ -130,6 +130,14 @@ fn generic_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
   Ok((input, Frames::Frame { id: id.to_string(), size, flags, data: data.into() }))
 }
 
+fn object_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+  let (input, (id, size, flags)) =
+    tuple((id_as_str, be_u32, be_u16))(input)?;
+  debug!("object {} {}", id, size);
+  let (input, data) = take(size)(input)?;
+  Ok((input, Frames::Object { id: id.to_string(), size, flags, data: data.into() }))
+}
+
 fn generic_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, (id, size, flags)) =
     tuple((id_as_str, syncsafe, be_u16))(input)?;
@@ -159,7 +167,6 @@ fn syncsafe(input: &[u8]) -> IResult<&[u8], u32> {
   fold_many_m_n(4, 4, be_u8, 0u32,
     |acc, byte| acc << 7 | (byte as u32))(input)
 }
-
 
 fn padding(input: &[u8]) -> IResult<&[u8], Frames> {
   let (input, pad) =

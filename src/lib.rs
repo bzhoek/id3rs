@@ -5,14 +5,13 @@ use std::process::Command;
 use std::str::from_utf8;
 
 use log::{debug, LevelFilter};
-use nom::{AsBytes, IResult};
 use nom::branch::alt;
-use nom::bytes::complete::take_until;
 use nom::bytes::streaming::{tag, take};
 use nom::combinator::{eof, map};
+use nom::IResult;
 use nom::multi::{count, fold_many_m_n, many_till};
 use nom::number::complete::be_u32;
-use nom::number::streaming::{be_u16, be_u8, le_u16};
+use nom::number::streaming::{be_u16, be_u8, le_u16, le_u8};
 use nom::sequence::tuple;
 
 mod mp3;
@@ -32,6 +31,13 @@ pub enum Frames {
     size: u32,
     flags: u16,
     data: Vec<u8>,
+  },
+  ExtendedText {
+    id: String,
+    size: u32,
+    flags: u16,
+    description: String,
+    value: String,
   },
   Text {
     id: String,
@@ -56,7 +62,7 @@ pub enum Frames {
 fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
   map(
     many_till(
-      alt((padding, text_frame_v23, object_frame_v23, generic_frame_v23)), eof),
+      alt((padding, extended_text_frame_v23, text_frame_v23, object_frame_v23, generic_frame_v23)), eof),
     |(frames, _)| frames)(input)
 }
 
@@ -65,6 +71,33 @@ fn all_frames_v24(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
     many_till(
       alt((padding, text_frame_v24, generic_frame_v24)), eof),
     |(frames, _)| frames)(input)
+}
+
+fn extended_text_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+  let (input, (id, size, flags)) = frame_header_v23(input)?;
+  debug!("extended {:?}", id);
+  let (input, encoding) = be_u8(input)?;
+  let (input, data) = take(size - 1)(input)?;
+  let (_data, (description, value)) = match encoding {
+    1 => { tuple((null_terminated_utf16, null_terminated_utf16))(data)? }
+    _ => { tuple((terminated_utf8, terminated_utf8))(data)? }
+  };
+
+  Ok((input, Frames::ExtendedText {
+    id: "XXX".to_string(),
+    size,
+    flags,
+    description,
+    value,
+  }))
+}
+
+fn frame_header_v23(input: &[u8]) -> IResult<&[u8], (&[u8], u32, u16)> {
+  tuple((
+    tag("TXXX"),
+    be_u32,
+    be_u16
+  ))(input)
 }
 
 fn text_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
@@ -127,10 +160,10 @@ fn object_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
   debug!("object {} {}", id, size);
   let offset = input.len();
   let (input, encoding) = be_u8(input)?;
-  let (input, mime_type) = null_terminated_utf8(input)?;
+  let (input, mime_type) = terminated_utf8(input)?;
   let (input, (filename, description)) = match encoding {
     1 => { tuple((null_terminated_utf16, null_terminated_utf16))(input)? }
-    _ => { tuple((null_terminated_utf8, null_terminated_utf8))(input)? }
+    _ => { tuple((terminated_utf8, terminated_utf8))(input)? }
   };
 
   let data_size = size - (offset - input.len()) as u32;
@@ -139,16 +172,17 @@ fn object_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
   Ok((input, Frames::Object { id: id.to_string(), size, flags, mime_type, filename, description, data: data.into() }))
 }
 
-fn null_terminated_utf8(input: &[u8]) -> IResult<&[u8], String> {
-  let (input, mime) = take_until(b"\0".as_bytes())(input)?;
-  let (input, _encoding) = be_u8(input)?;
-  let text = String::from_utf8(Vec::from(mime)).unwrap();
+fn terminated_utf8(input: &[u8]) -> IResult<&[u8], String> {
+  let (input, bytes) = many_till(le_u8, alt((eof, tag(b"\x00"))))(input)?;
+  let text = String::from_utf8(bytes.0).unwrap();
+  debug!("utf8 {}", text);
   Ok((input, text))
 }
 
 fn null_terminated_utf16(input: &[u8]) -> IResult<&[u8], String> {
   let (input, _bom) = tag(b"\xff\xfe")(input)?;
   let (input, (words, _nul)) = many_till(le_u16, tag(b"\0\0"))(input)?;
+
   let text = String::from_utf16(&words).unwrap();
   debug!("utf16 {}", text);
   Ok((input, text))
@@ -380,6 +414,13 @@ impl ID3Tag {
     }).flatten()
   }
 
+  pub fn extended_text2(&self, name: &str) -> Option<&Frames> {
+    self.frames.iter().find(|f| match f {
+      Frames::ExtendedText { id, description, .. } => (id == "XXX" && description == name),
+      _ => false
+    })
+  }
+
   pub fn title(&self) -> Option<String> {
     self.text("IT2")
   }
@@ -510,20 +551,41 @@ mod tests {
         data,
       }));
     }
+
+    #[test]
+    pub fn test_extended_text_8859() {
+      log_init();
+      let (rofile, _, _) = filenames("3eep");
+      let tag = ID3Tag::read(&rofile).unwrap();
+      assert_eq!(tag.extended_text2("Hello"), Some(&Frames::ExtendedText {
+        id: "XXX".to_string(),
+        size: 12,
+        flags: 0,
+        description: "Hello".to_string(),
+        value: "World".to_string(),
+      }));
+    }
+
+    #[test]
+    pub fn test_extended_text_utf16() {
+      log_init();
+      let (rofile, _, _) = filenames("3eep-utf16");
+      let tag = ID3Tag::read(&rofile).unwrap();
+      assert_eq!(tag.extended_text2("Hello"), Some(&Frames::ExtendedText {
+        id: "XXX".to_string(),
+        size: 12,
+        flags: 0,
+        description: "Hello".to_string(),
+        value: "World".to_string(),
+      }));
+    }
   }
+
   #[test]
   pub fn test_invalid_version() {
     let (rofile, _, _) = filenames("5eep");
     let result = ID3Tag::read(&rofile).err().unwrap().to_string();
     assert_eq!(result, "Invalid version: 5".to_string());
-  }
-
-  #[test]
-  pub fn test_user_text() {
-    log_init();
-    let (rofile, _, _) = filenames("3eep");
-    let tag = ID3Tag::read(&rofile).unwrap();
-    assert_eq!(tag.extended_text("Hello"), Some("World".to_string()));
   }
 
   #[test]
@@ -745,6 +807,7 @@ mod tests {
       .fold(0u32, |sum, frame| sum + match frame {
         Frames::Frame { size, .. } => (10 + size),
         Frames::Text { size, .. } => (10 + size),
+        Frames::ExtendedText { size, .. } => (10 + size),
         Frames::Object { size, .. } => (10 + size),
         Frames::Padding { size } => (0 + size),
       });
@@ -755,6 +818,7 @@ mod tests {
       .fold(0u32, |sum, frame| sum + match frame {
         Frames::Frame { size, .. } => (10 + size),
         Frames::Text { text, .. } => (10 + 1 + text.len() as u32),
+        Frames::ExtendedText { size, .. } => (10 + size),
         Frames::Object { size, .. } => (10 + size),
         Frames::Padding { size } => (0 + size),
       });

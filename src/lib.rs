@@ -396,7 +396,8 @@ mod tests {
     let names = filenames(stem);
     make_rwcopy(&names.0, &names.2).unwrap();
     body(&names);
-    fs::remove_file(names.2).unwrap();
+    fs::remove_file(names.1).unwrap_or(());
+    fs::remove_file(names.2).unwrap_or(())
   }
 
   mod v24 {
@@ -406,7 +407,7 @@ mod tests {
 
     #[test]
     pub fn test_set_object() {
-      rw_test(FILENAME, |(rofile, _, rwfile)| {
+      rw_test(FILENAME, |(_, _, rwfile)| {
         let mut tag = ID3Tag::read(&rwfile).unwrap();
 
         tag.set_object("HELLO.TXT", "text/plain", "Hello", &"Hello, world".as_bytes());

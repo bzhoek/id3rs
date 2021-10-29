@@ -88,8 +88,9 @@ impl ID3Tag {
   pub fn write(&self, target: &str) -> Result<()> {
     let (mut file, header) = Self::read_header(&*self.filepath)?;
 
+    let mut tmp: File = tempfile::tempfile()?;
+
     let mut out = if self.filepath == target {
-      let mut tmp = File::create("stream.tmp")?;
       file.seek(SeekFrom::Start(ID3HEADER_SIZE + header.tag_size as u64))?; // skip header and tag
       std::io::copy(&mut file, &mut tmp)?;
       OpenOptions::new().write(true).truncate(true).open(&self.filepath)?
@@ -109,7 +110,7 @@ impl ID3Tag {
     out.seek(SeekFrom::Start(ID3HEADER_SIZE + size))?;
 
     if self.filepath == target {
-      let mut tmp = File::open("stream.tmp")?;
+      tmp.seek(SeekFrom::Start(0))?;
       std::io::copy(&mut tmp, &mut out)?;
     } else {
       file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
@@ -154,7 +155,7 @@ impl ID3Tag {
           out.write(b"\x00")?;
           out.write(value.as_bytes())?;
         }
-        Frames::Object { id, size, flags, mime_type, filename, description, data } => {
+        Frames::Object { id, flags, mime_type, filename, description, data, .. } => {
           let len = mime_type.len() + filename.len() + description.len() + 4 + data.len();
           let vec = as_syncsafe(len as u32);
           out.write(id.as_ref())?;
@@ -242,7 +243,7 @@ impl ID3Tag {
     self.set_text("CON", text);
   }
 
-  fn set_object(&mut self, name: &str, mime_type: &str, description: &str, data: &[u8]) {
+  pub fn set_object(&mut self, name: &str, mime_type: &str, description: &str, data: &[u8]) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
         Frames::Object { id, filename, .. } => id == "GEOB" && filename == name,
@@ -391,8 +392,6 @@ mod tests {
   }
 
   mod v24 {
-    use nom::AsBytes;
-
     use super::*;
 
     const FILENAME: &str = "samples/4tink";

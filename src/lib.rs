@@ -316,15 +316,17 @@ mod tests {
   mod v23 {
     use super::*;
 
+    const FILENAME: &str = "samples/3tink";
+
     #[test]
-    pub fn test_geobs() {
+    pub fn test_all_geobs() {
       log_init();
-      let (rofile, _, _) = filenames("3eep");
+      let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3Tag::read(&rofile).unwrap();
       let data = "Hello, world".as_bytes().to_vec();
       assert_eq!(tag.objects("GEOB"), vec![&Frames::Object {
         id: "GEOB".to_string(),
-        size: 121,
+        size: 80,
         flags: 0,
         mime_type: "application/vnd.rekordbox.dat".to_string(),
         filename: "ANLZ0000.DAT".to_string(),
@@ -334,15 +336,15 @@ mod tests {
     }
 
     #[test]
-    pub fn test_geob_filename() {
+    pub fn test_find_geob() {
       log_init();
-      let (rofile, _, _) = filenames("3eep");
+      let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3Tag::read(&rofile).unwrap();
       let data = "Hello, world".as_bytes().to_vec();
       let option = tag.object_by_filename("ANLZ0000.DAT");
       assert_eq!(option, Some(&Frames::Object {
         id: "GEOB".to_string(),
-        size: 121,
+        size: 80,
         flags: 0,
         mime_type: "application/vnd.rekordbox.dat".to_string(),
         filename: "ANLZ0000.DAT".to_string(),
@@ -354,7 +356,7 @@ mod tests {
     #[test]
     pub fn test_extended_text_8859() {
       log_init();
-      let (rofile, _, _) = filenames("3eep");
+      let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3Tag::read(&rofile).unwrap();
       assert_eq!(tag.extended_text_frame("Hello"), Some(&Frames::ExtendedText {
         id: "TXXX".to_string(),
@@ -368,22 +370,22 @@ mod tests {
     #[test]
     pub fn test_extended_text_utf16() {
       log_init();
-      let (rofile, _, _) = filenames("3eep-utf16");
+      let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3Tag::read(&rofile).unwrap();
-      assert_eq!(tag.extended_text_frame("Hello"), Some(&Frames::ExtendedText {
+      assert_eq!(tag.extended_text_frame("こんにちは"), Some(&Frames::ExtendedText {
         id: "TXXX".to_string(),
         size: 23,
         flags: 0,
-        description: "Hello".to_string(),
-        value: "今日は".to_string(),
+        description: "こんにちは".to_string(),
+        value: "世界".to_string(),
       }));
-      assert_eq!(tag.extended_text("Hello"), Some(&"今日は".to_string()));
+      assert_eq!(tag.extended_text("こんにちは"), Some(&"世界".to_string()));
     }
   }
 
   #[test]
   pub fn test_invalid_version() {
-    let (rofile, _, _) = filenames("5eep");
+    let (rofile, _, _) = filenames("samples/5eep");
     let result = ID3Tag::read(&rofile).err().unwrap().to_string();
     assert_eq!(result, "Invalid version: 5".to_string());
   }
@@ -393,11 +395,13 @@ mod tests {
 
     use super::*;
 
+    const FILENAME: &str = "samples/4tink";
+
     #[test]
     pub fn test_set_object() {
       log_init();
 
-      let (rofile, _, rwfile) = filenames("4eep");
+      let (rofile, _, rwfile) = filenames(FILENAME);
       make_rwcopy(&rofile, &rwfile).unwrap();
 
       let mut tag = ID3Tag::read(&rwfile).unwrap();
@@ -411,7 +415,7 @@ mod tests {
     pub fn test_change_extended_text() {
       log_init();
 
-      let (rofile, _, rwfile) = filenames("4eep");
+      let (rofile, _, rwfile) = filenames(FILENAME);
       make_rwcopy(&rofile, &rwfile).unwrap();
 
       let mut tag = ID3Tag::read(&rwfile).unwrap();
@@ -420,7 +424,7 @@ mod tests {
       tag.write(&rwfile).unwrap();
 
       let tag = ID3Tag::read(&rwfile).unwrap();
-      assert_eq!(tag.extended_text("OriginalTitle"), Some(&"Wild Eep".to_string()));
+      assert_eq!(tag.extended_text("OriginalTitle"), Some(&"Tink".to_string()));
       assert_eq!(tag.extended_text("EnergyLevel"), Some(&"99".to_string()));
       assert_eq!(mpck(&rofile), mpck(&rwfile));
     }
@@ -428,7 +432,7 @@ mod tests {
     #[test]
     pub fn test_utf8_energy_level() {
       log_init();
-      let (rofile, _, _) = filenames("4eep");
+      let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3Tag::read(&rofile).unwrap();
       assert_eq!(tag.extended_text("Hello"), Some(&"World".to_string()));
     }

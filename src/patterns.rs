@@ -187,48 +187,52 @@ mod tests {
 
   #[test]
   fn test_header_and_frames() {
-    let (rofile, _, _) = filenames("4bleak");
+    let (rofile, _, _) = filenames("samples/4tink");
     let mut file = std::fs::File::open(&rofile).unwrap();
     let mut buffer = [0; 10];
     file.read_exact(&mut buffer).unwrap();
 
     let (_, header) = file_header(&buffer).ok().unwrap();
-    assert_eq!(header, Header { version: 4, revision: 0, flags: 0, tag_size: 42316 });
+    assert_eq!(header, Header { version: 4, revision: 0, flags: 0, tag_size: 1114 });
 
     let mut input = vec![0u8; header.tag_size as usize];
     file.read_exact(&mut input).unwrap();
 
     let (_, result) = all_frames_v24(&input).ok().unwrap();
-    assert_eq!(14, result.len());
+    assert_eq!(11, result.len());
   }
 
   #[test]
   fn test_frames_individually() {
     log_init();
 
-    let (rofile, _, _) = filenames("4bleak");
+    let (rofile, _, _) = filenames("samples/4tink");
     let mut file = std::fs::File::open(&rofile).unwrap();
     let mut buffer = [0; 10];
     file.read_exact(&mut buffer).unwrap();
 
     let (_, header) = file_header(&buffer).ok().unwrap();
-    assert_eq!(header, Header { version: 4, revision: 0, flags: 0, tag_size: 42316 });
+    assert_eq!(header, Header { version: 4, revision: 0, flags: 0, tag_size: 1114 });
 
     let mut input = vec![0u8; header.tag_size as usize];
     file.read_exact(&mut input).unwrap();
 
+    let data = "Hello, world".as_bytes().to_vec();
+    let (input, frame) = object_frame_v24(&input).ok().unwrap();
+    assert_eq!(frame, Frames::Object { id: "GEOB".to_string(), size: 80, flags: 0, mime_type: "application/vnd.rekordbox.dat".to_string(), filename: "ANLZ0000.DAT".to_string(), description: "Rekordbox Analysis Data".to_string(), data: data });
+
+    let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
+    assert_eq!(frame, Frames::ExtendedText { id: "TXXX".to_string(), size: 12, flags: 0, description: "Hello".to_string(), value: "World".to_string() });
+
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "PE1".to_string(), size: 25, flags: 0, text: "Maenad Veyl".to_string() });
+    assert_eq!(frame, Frames::Text { id: "IT2".to_string(), size: 5, flags: 0, text: "Tink".to_string() });
+
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "IT2".to_string(), size: 13, flags: 0, text: "Bleak".to_string() });
-    let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "ALB".to_string(), size: 23, flags: 0, text: "Body Count".to_string() });
-    let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "IT3".to_string(), size: 3, flags: 0, text: "".to_string() });
+    assert_eq!(frame, Frames::Text { id: "PE1".to_string(), size: 6, flags: 0, text: "Apple".to_string() });
 
     let (input, frame) = generic_frame_v24(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, size: 26524, flags: _, data: _} => {
-      assert_eq!(id, "APIC".to_string());
+    assert_matches!(frame, Frames::Frame{ id, ..} => {
+      assert_eq!(id, "COMM".to_string());
       // TODO: compare actual picture
       // if let Frames::Frame { id, size, flags, data } = frame {
       //   let mut out = File::create("APIC.bin").unwrap();
@@ -236,41 +240,23 @@ mod tests {
       // }
     });
 
-    let (input, frame) = generic_frame_v24(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, size: 11, flags: _, data: _}=> {
-      assert_eq!(id, "COMM".to_string());
-    });
+    let (input, frame) = text_frame_v24(&input).ok().unwrap();
+    assert_eq!(frame, Frames::Text { id: "CON".to_string(), size: 7, flags: 0, text: "Custom".to_string() });
 
-    //         4A
+    let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
+    assert_eq!(frame, Frames::ExtendedText { id: "TXXX".to_string(), size: 23, flags: 0, description: "こんにちは".to_string(), value: "世界".to_string() });
+
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "KEY".to_string(), size: 3, flags: 0, text: "4A".to_string() });
 
-    let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "BPM".to_string(), size: 4, flags: 0, text: "100".to_string() });
-
-    //      
     let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
     assert_eq!(frame, Frames::ExtendedText { id: "TXXX".to_string(), size: 14, flags: 0, description: "EnergyLevel".to_string(), value: "6".to_string() });
 
-    let (input, frame) = generic_frame_v24(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, size: 92, flags: _, data: _}=> {
-      assert_eq!(id, "GEOB".to_string());
-    });
+    let (input, frame) = text_frame_v24(&input).ok().unwrap();
+    assert_eq!(frame, Frames::Text { id: "IT3".to_string(), size: 1, flags: 0, text: "".to_string() });
 
-    let (input, frame) = generic_frame_v24(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, size: 100, flags: _, data: _}=> {
-      assert_eq!(id, "GEOB".to_string());
-    });
-
-    let (input, frame) = generic_frame_v24(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, size: 13789, flags: _, data: _}=> {
-      assert_eq!(id, "GEOB".to_string());
-    });
-
-    let (_input, frame) = generic_frame_v24(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, size: 561, flags: _, data: _}=> {
-      assert_eq!(id, "GEOB".to_string());
-    });
+    let (_input, frame) = padding(&input).ok().unwrap();
+    assert_eq!(frame, Frames::Padding { size: 846 });
   }
 
   fn filenames(base: &str) -> (String, String, String) {

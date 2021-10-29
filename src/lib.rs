@@ -391,6 +391,14 @@ mod tests {
     assert_eq!(result, "Invalid version: 5".to_string());
   }
 
+  fn rw_test(stem: &str, body: fn(&(String, String, String))) {
+    log_init();
+    let names = filenames(stem);
+    make_rwcopy(&names.0, &names.2).unwrap();
+    body(&names);
+    fs::remove_file(names.2).unwrap();
+  }
+
   mod v24 {
     use super::*;
 
@@ -398,34 +406,28 @@ mod tests {
 
     #[test]
     pub fn test_set_object() {
-      log_init();
+      rw_test(FILENAME, |(rofile, _, rwfile)| {
+        let mut tag = ID3Tag::read(&rwfile).unwrap();
 
-      let (rofile, _, rwfile) = filenames(FILENAME);
-      make_rwcopy(&rofile, &rwfile).unwrap();
-
-      let mut tag = ID3Tag::read(&rwfile).unwrap();
-
-      tag.set_object("HELLO.TXT", "text/plain", "Hello", &"Hello, world".as_bytes());
-      tag.set_extended_text("EnergyLevel", "99");
-      tag.write(&rwfile).unwrap();
+        tag.set_object("HELLO.TXT", "text/plain", "Hello", &"Hello, world".as_bytes());
+        tag.set_extended_text("EnergyLevel", "99");
+        tag.write(&rwfile).unwrap();
+      });
     }
 
     #[test]
     pub fn test_change_extended_text() {
-      log_init();
+      rw_test(FILENAME, |(rofile, _, rwfile)| {
+        let mut tag = ID3Tag::read(&rwfile).unwrap();
+        tag.set_extended_text("OriginalTitle", &tag.title().unwrap());
+        tag.set_extended_text("EnergyLevel", "99");
+        tag.write(&rwfile).unwrap();
 
-      let (rofile, _, rwfile) = filenames(FILENAME);
-      make_rwcopy(&rofile, &rwfile).unwrap();
-
-      let mut tag = ID3Tag::read(&rwfile).unwrap();
-      tag.set_extended_text("OriginalTitle", &tag.title().unwrap());
-      tag.set_extended_text("EnergyLevel", "99");
-      tag.write(&rwfile).unwrap();
-
-      let tag = ID3Tag::read(&rwfile).unwrap();
-      assert_eq!(tag.extended_text("OriginalTitle"), Some(&"Tink".to_string()));
-      assert_eq!(tag.extended_text("EnergyLevel"), Some(&"99".to_string()));
-      assert_eq!(mpck(&rofile), mpck(&rwfile));
+        let tag = ID3Tag::read(&rwfile).unwrap();
+        assert_eq!(tag.extended_text("OriginalTitle"), Some(&"Tink".to_string()));
+        assert_eq!(tag.extended_text("EnergyLevel"), Some(&"99".to_string()));
+        assert_eq!(mpck(&rofile), mpck(&rwfile));
+      });
     }
 
     #[test]
@@ -464,19 +466,17 @@ mod tests {
 
   #[test]
   pub fn test_changing_genre() {
-    log_init();
-    let (rofile, _, rwfile) = filenames("4blitz");
-    make_rwcopy(&rofile, &rwfile).unwrap();
+    rw_test("4blitz", |(rofile, _, rwfile)| {
+      let mut tag = ID3Tag::read(&rwfile).unwrap();
+      assert_eq!(tag.text("CON"), Some("techno".to_string()));
+      assert_eq!(tag.genre(), Some("techno".to_string()));
+      tag.set_genre("notech");
+      tag.write(&rwfile).unwrap();
 
-    let mut tag = ID3Tag::read(&rwfile).unwrap();
-    assert_eq!(tag.text("CON"), Some("techno".to_string()));
-    assert_eq!(tag.genre(), Some("techno".to_string()));
-    tag.set_genre("notech");
-    tag.write(&rwfile).unwrap();
-
-    let tag = ID3Tag::read(&rwfile).unwrap();
-    assert_eq!(tag.genre(), Some("notech".to_string()));
-    assert_eq!(mpck(&rofile), mpck(&rwfile));
+      let tag = ID3Tag::read(&rwfile).unwrap();
+      assert_eq!(tag.genre(), Some("notech".to_string()));
+      assert_eq!(mpck(&rofile), mpck(&rwfile));
+    });
   }
 
   #[test]
@@ -503,15 +503,13 @@ mod tests {
 
   #[test]
   pub fn test_change_inplace() {
-    log_init();
-    let (rofile, _, rwfile) = filenames("4bleak");
-    make_rwcopy(&rofile, &rwfile).unwrap();
-
-    let mut tag = ID3Tag::read(&rwfile).unwrap();
-    tag.set_title("Bleek");
-    tag.set_extended_text("EnergyLevel", "99");
-    tag.write(&rwfile).unwrap();
-    assert_eq!(mpck(&rofile), mpck(&rwfile));
+    rw_test("4bleak", |(rofile, _, rwfile)| {
+      let mut tag = ID3Tag::read(&rwfile).unwrap();
+      tag.set_title("Bleek");
+      tag.set_extended_text("EnergyLevel", "99");
+      tag.write(&rwfile).unwrap();
+      assert_eq!(mpck(&rofile), mpck(&rwfile));
+    });
   }
 
   #[test]
@@ -562,6 +560,6 @@ mod tests {
   }
 
   fn filenames(base: &str) -> (String, String, String) {
-    (format!("{}.mp3", base), format!("{}-out.mp3", base), format!("{}-rw.mp3", base))
+    (format!("{}.mp3", base), format!("{}-out.mp3", base), format!("{}-{}.mp3", base, rand::random::<u32>()))
   }
 }

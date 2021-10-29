@@ -177,12 +177,12 @@ impl ID3Tag {
     Ok(())
   }
 
-  pub fn text(&self, identifier: &str) -> Option<String> {
+  pub fn text(&self, identifier: &str) -> Option<&str> {
     self.frames.iter().find(|f| match f {
       Frames::Text { id, size: _, flags: _, text: _ } => (id == identifier),
       _ => false
     }).map(|f| match f {
-      Frames::Text { id: _, size: _, flags: _, text } => Some(text.to_string()),
+      Frames::Text { id: _, size: _, flags: _, text } => Some(text.as_str()),
       _ => None
     }).flatten()
   }
@@ -208,30 +208,30 @@ impl ID3Tag {
     })
   }
 
-  pub fn extended_text(&self, name: &str) -> Option<&String> {
+  pub fn extended_text(&self, name: &str) -> Option<&str> {
     self.extended_text_frame(name).map(|f| match f {
-      Frames::ExtendedText { value, .. } => Some(value),
+      Frames::ExtendedText { value, .. } => Some(value.as_str()),
       _ => None
     }).flatten()
   }
 
-  pub fn title(&self) -> Option<String> {
+  pub fn title(&self) -> Option<&str> {
     self.text("IT2")
   }
 
-  pub fn subtitle(&self) -> Option<String> {
+  pub fn subtitle(&self) -> Option<&str> {
     self.text("IT3")
   }
 
-  pub fn artist(&self) -> Option<String> {
+  pub fn artist(&self) -> Option<&str> {
     self.text("PE1")
   }
 
-  pub fn genre(&self) -> Option<String> {
+  pub fn genre(&self) -> Option<&str> {
     self.text("CON")
   }
 
-  pub fn key(&self) -> Option<String> {
+  pub fn key(&self) -> Option<&str> {
     self.text("KEY")
   }
 
@@ -380,7 +380,7 @@ mod tests {
         description: "こんにちは".to_string(),
         value: "世界".to_string(),
       }));
-      assert_eq!(tag.extended_text("こんにちは"), Some(&"世界".to_string()));
+      assert_eq!(tag.extended_text("こんにちは"), Some("世界"));
     }
   }
 
@@ -420,13 +420,13 @@ mod tests {
     pub fn test_change_extended_text() {
       rw_test(FILENAME, |(rofile, _, rwfile)| {
         let mut tag = ID3Tag::read(&rwfile).unwrap();
-        tag.set_extended_text("OriginalTitle", &tag.title().unwrap());
+        tag.set_extended_text("OriginalTitle", &tag.title().unwrap().to_string());
         tag.set_extended_text("EnergyLevel", "99");
         tag.write(&rwfile).unwrap();
 
         let tag = ID3Tag::read(&rwfile).unwrap();
-        assert_eq!(tag.extended_text("OriginalTitle"), Some(&"Tink".to_string()));
-        assert_eq!(tag.extended_text("EnergyLevel"), Some(&"99".to_string()));
+        assert_eq!(tag.extended_text("OriginalTitle"), Some("Tink"));
+        assert_eq!(tag.extended_text("EnergyLevel"), Some("99"));
         assert_eq!(mpck(&rofile), mpck(&rwfile));
       });
     }
@@ -436,7 +436,7 @@ mod tests {
       log_init();
       let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3Tag::read(&rofile).unwrap();
-      assert_eq!(tag.extended_text("Hello"), Some(&"World".to_string()));
+      assert_eq!(tag.extended_text("Hello"), Some("World"));
     }
 
     #[test]
@@ -445,13 +445,13 @@ mod tests {
       let (rofile, _, _) = filenames("samples/4tink");
       let tag = ID3Tag::read(&rofile).unwrap();
 
-      assert_eq!(tag.text("IT2"), Some("Tink".to_string()));
-      assert_eq!(tag.extended_text("EnergyLevel"), Some(&"6".to_string()));
+      assert_eq!(tag.text("IT2"), Some("Tink"));
+      assert_eq!(tag.extended_text("EnergyLevel"), Some("6"));
       assert_eq!(tag.extended_text("OriginalTitle"), None);
-      assert_eq!(tag.title(), Some("Tink".to_string()));
-      assert_eq!(tag.subtitle(), Some("".to_string()));
-      assert_eq!(tag.key(), Some("4A".to_string()));
-      assert_eq!(tag.artist(), Some("Apple".to_string()));
+      assert_eq!(tag.title(), Some("Tink"));
+      assert_eq!(tag.subtitle(), Some(""));
+      assert_eq!(tag.key(), Some("4A"));
+      assert_eq!(tag.artist(), Some("Apple"));
     }
   }
 
@@ -461,21 +461,21 @@ mod tests {
     let (rofile, _, _) = filenames("samples/4tink");
     let tag = ID3Tag::read(&rofile).unwrap();
 
-    assert_eq!(tag.text("CON"), Some("sounds".to_string()));
-    assert_eq!(tag.genre(), Some("sounds".to_string()));
+    assert_eq!(tag.text("CON"), Some("sounds"));
+    assert_eq!(tag.genre(), Some("sounds"));
   }
 
   #[test]
   pub fn test_changing_genre() {
     rw_test("samples/4tink", |(rofile, _, rwfile)| {
       let mut tag = ID3Tag::read(&rwfile).unwrap();
-      assert_eq!(tag.text("CON"), Some("sounds".to_string()));
-      assert_eq!(tag.genre(), Some("sounds".to_string()));
+      assert_eq!(tag.text("CON"), Some("sounds"));
+      assert_eq!(tag.genre(), Some("sounds"));
       tag.set_genre("notech");
       tag.write(&rwfile).unwrap();
 
       let tag = ID3Tag::read(&rwfile).unwrap();
-      assert_eq!(tag.genre(), Some("notech".to_string()));
+      assert_eq!(tag.genre(), Some("notech"));
       assert_eq!(mpck(&rofile), mpck(&rwfile));
     });
   }

@@ -90,10 +90,10 @@ mod tests {
 
   #[test]
   fn find_signature() {
-    let buffer = include_bytes!("../4bleak.mp3");
+    let buffer = include_bytes!("../samples/4tink.mp3");
     println!("{}", buffer.len()); // 12884121 - 12841795
-    let (position, frame) = file_header(&buffer[41303..]).ok().unwrap();
-    assert_eq!(buffer.len() - position.len(), 42327);
+    let (position, frame) = file_header(&buffer[1114..]).ok().unwrap();
+    assert_eq!(buffer.len() - position.len(), 1125);
     println!("{:?}", frame);
     assert_eq!(frame, Frame {
       version: Version::Version1,

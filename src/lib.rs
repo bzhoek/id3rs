@@ -442,35 +442,35 @@ mod tests {
     #[test]
     pub fn test_reading() {
       log_init();
-      let (rofile, _, _) = filenames("4bleak");
+      let (rofile, _, _) = filenames("samples/4tink");
       let tag = ID3Tag::read(&rofile).unwrap();
 
-      assert_eq!(tag.text("IT2"), Some("Bleak".to_string()));
+      assert_eq!(tag.text("IT2"), Some("Tink".to_string()));
       assert_eq!(tag.extended_text("EnergyLevel"), Some(&"6".to_string()));
       assert_eq!(tag.extended_text("OriginalTitle"), None);
-      assert_eq!(tag.title(), Some("Bleak".to_string()));
+      assert_eq!(tag.title(), Some("Tink".to_string()));
       assert_eq!(tag.subtitle(), Some("".to_string()));
       assert_eq!(tag.key(), Some("4A".to_string()));
-      assert_eq!(tag.artist(), Some("Maenad Veyl".to_string()));
+      assert_eq!(tag.artist(), Some("Apple".to_string()));
     }
   }
 
   #[test]
   pub fn test_reading_genre() {
     log_init();
-    let (rofile, _, _) = filenames("4blitz");
+    let (rofile, _, _) = filenames("samples/4tink");
     let tag = ID3Tag::read(&rofile).unwrap();
 
-    assert_eq!(tag.text("CON"), Some("techno".to_string()));
-    assert_eq!(tag.genre(), Some("techno".to_string()));
+    assert_eq!(tag.text("CON"), Some("sounds".to_string()));
+    assert_eq!(tag.genre(), Some("sounds".to_string()));
   }
 
   #[test]
   pub fn test_changing_genre() {
-    rw_test("4blitz", |(rofile, _, rwfile)| {
+    rw_test("samples/4tink", |(rofile, _, rwfile)| {
       let mut tag = ID3Tag::read(&rwfile).unwrap();
-      assert_eq!(tag.text("CON"), Some("techno".to_string()));
-      assert_eq!(tag.genre(), Some("techno".to_string()));
+      assert_eq!(tag.text("CON"), Some("sounds".to_string()));
+      assert_eq!(tag.genre(), Some("sounds".to_string()));
       tag.set_genre("notech");
       tag.write(&rwfile).unwrap();
 
@@ -483,28 +483,27 @@ mod tests {
   #[test]
   pub fn test_unmodified_frame_count() {
     log_init();
-    let (rofile, _, _) = filenames("4bleak");
+    let (rofile, _, _) = filenames("samples/4tink");
 
     let tag = ID3Tag::read(&rofile).unwrap();
-    assert_eq!(tag.frames.len(), 14);
+    assert_eq!(tag.frames.len(), 11);
     assert_eq!(tag.extended_text("OriginalTitle"), None);
   }
 
   #[test]
   pub fn test_change_copy() {
-    log_init();
-    let (rofile, outfile, _) = filenames("4bleak");
-
-    let mut tag = ID3Tag::read(&rofile).unwrap();
-    tag.set_title("Bleek");
-    tag.set_extended_text("EnergyLevel", "99");
-    tag.write(&outfile).unwrap();
-    assert_eq!(mpck(&rofile), mpck(&outfile));
+    rw_test("samples/4tink", |(rofile, outfile, _)| {
+      let mut tag = ID3Tag::read(&rofile).unwrap();
+      tag.set_title("Bleek");
+      tag.set_extended_text("EnergyLevel", "99");
+      tag.write(&outfile).unwrap();
+      assert_eq!(mpck(&rofile), mpck(&outfile));
+    });
   }
 
   #[test]
   pub fn test_change_inplace() {
-    rw_test("4bleak", |(rofile, _, rwfile)| {
+    rw_test("samples/4tink", |(rofile, _, rwfile)| {
       let mut tag = ID3Tag::read(&rwfile).unwrap();
       tag.set_title("Bleek");
       tag.set_extended_text("EnergyLevel", "99");
@@ -534,7 +533,7 @@ mod tests {
   #[test]
   pub fn test_sum_frames() {
     log_init();
-    let (rofile, _, _) = filenames("4bleak");
+    let (rofile, _, _) = filenames("samples/4tink");
 
     let tag = ID3Tag::read(&rofile).unwrap();
     let sum = tag.frames.iter()
@@ -546,7 +545,7 @@ mod tests {
         Frames::Padding { size } => (0 + size),
       });
 
-    assert_eq!(sum, 42316);
+    assert_eq!(sum, 1114);
 
     let _sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
@@ -561,6 +560,7 @@ mod tests {
   }
 
   fn filenames(base: &str) -> (String, String, String) {
-    (format!("{}.mp3", base), format!("{}-out.mp3", base), format!("{}-{}.mp3", base, rand::random::<u32>()))
+    let rnd = rand::random::<u32>();
+    (format!("{}.mp3", base), format!("{}-out{}.mp3", base, rnd), format!("{}-rw{}.mp3", base, rnd))
   }
 }

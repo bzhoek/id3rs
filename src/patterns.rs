@@ -241,7 +241,7 @@ mod tests {
     });
 
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "CON".to_string(), size: 7, flags: 0, text: "Custom".to_string() });
+    assert_eq!(frame, Frames::Text { id: "CON".to_string(), size: 7, flags: 0, text: "sounds".to_string() });
 
     let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
     assert_eq!(frame, Frames::ExtendedText { id: "TXXX".to_string(), size: 23, flags: 0, description: "こんにちは".to_string(), value: "世界".to_string() });

@@ -43,14 +43,14 @@ impl From<u8> for Layer {
 
 #[derive(Debug, PartialEq)]
 enum Protection {
-  CRC,
+  Crc,
   Unprotected,
 }
 
 impl From<u8> for Protection {
   fn from(version: u8) -> Protection {
     match version {
-      0 => Protection::CRC,
+      0 => Protection::Crc,
       _ => Protection::Unprotected,
     }
   }
@@ -65,11 +65,11 @@ pub struct Frame {
 
 
 fn do_everything_bits(i: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8, u8, u8)> {
-  let (i, a) = tag(0b111, 3usize)(i)?;
-  let (i, b) = take(2usize)(i)?;
-  let (i, c) = take(2usize)(i)?;
-  let (i, d) = take(1usize)(i)?;
-  Ok((i, (a, b, c, d)))
+  let (i, sync) = tag(0b111, 3usize)(i)?;
+  let (i, version) = take(2usize)(i)?;
+  let (i, layer) = take(2usize)(i)?;
+  let (i, crc) = take(1usize)(i)?;
+  Ok((i, (sync, version, layer, crc)))
 }
 
 fn file_header(input: &[u8]) -> IResult<&[u8], Frame> {

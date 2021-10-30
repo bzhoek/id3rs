@@ -1,5 +1,5 @@
 [package]
-name = "id3-rs"
+name = "id3rs"
 version = "0.1.0"
 authors = ["Bas van der Hoek <bas@hoek.com>"]
 edition = "2018"

@@ -1,6 +1,7 @@
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::Path;
 use std::process::Command;
 
 use log::{debug, LevelFilter};
@@ -63,8 +64,8 @@ pub struct ID3Tag {
 const ID3HEADER_SIZE: u64 = 10;
 
 impl ID3Tag {
-  pub fn read(filepath: &str) -> Result<ID3Tag> {
-    let (mut file, header) = Self::read_header(filepath)?;
+  pub fn read(path: impl AsRef<Path> + Copy) -> Result<ID3Tag> {
+    let (mut file, header) = Self::read_header(path)?;
     let mut input = vec![0u8; header.tag_size as usize];
     file.read_exact(&mut input).unwrap();
 
@@ -74,28 +75,29 @@ impl ID3Tag {
       v => Err(format!("Invalid version: {}", v))?
     };
 
-    Ok(ID3Tag { filepath: filepath.to_string(), frames: result })
+    Ok(ID3Tag { filepath: path.as_ref().to_str().unwrap().to_string(), frames: result })
   }
 
-  fn read_header(filepath: &str) -> Result<(File, Header)> {
-    let mut file = std::fs::File::open(filepath)?;
+  fn read_header(path: impl AsRef<Path>) -> Result<(File, Header)> {
+    let mut file = std::fs::File::open(path)?;
     let mut buffer = [0; 10];
     file.read_exact(&mut buffer).unwrap();
     let (_, header) = file_header(&buffer).map_err(|_| "Header error")?;
     Ok((file, header))
   }
 
-  pub fn write(&self, target: &str) -> Result<()> {
+  pub fn write(&self, target: impl AsRef<Path>) -> Result<()> {
     let (mut file, header) = Self::read_header(&*self.filepath)?;
 
     let mut tmp: File = tempfile::tempfile()?;
 
+    let target = target.as_ref().to_str().unwrap().to_string();
     let mut out = if self.filepath == target {
       file.seek(SeekFrom::Start(ID3HEADER_SIZE + header.tag_size as u64))?; // skip header and tag
       std::io::copy(&mut file, &mut tmp)?;
       OpenOptions::new().write(true).truncate(true).open(&self.filepath)?
     } else {
-      File::create(target)?
+      File::create(&target)?
     };
 
     out.write(b"ID3\x04\x00\x00FAKE")?;

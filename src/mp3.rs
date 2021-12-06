@@ -64,6 +64,7 @@ pub struct Frame {
 }
 
 
+#[allow(dead_code)]
 fn do_everything_bits(i: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8, u8, u8)> {
   let (i, sync) = tag(0b111, 3usize)(i)?;
   let (i, version) = take(2usize)(i)?;
@@ -72,6 +73,7 @@ fn do_everything_bits(i: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8, u8,
   Ok((i, (sync, version, layer, crc)))
 }
 
+#[allow(dead_code)]
 fn file_header(input: &[u8]) -> IResult<&[u8], Frame> {
   let (input, _) = take_until(b"\xff".as_bytes())(input)?;
   println!("{:?}", input.len());

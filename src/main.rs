@@ -3,7 +3,7 @@ use env_logger::Env;
 use env_logger::Target::Stdout;
 use log::debug;
 
-use id3_rs::ID3Tag;
+use id3rs::ID3Tag;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 

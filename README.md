@@ -1,4 +1,6 @@
-Alternative to [rust-id3](https://github.com/polyfloyd/rust-id3) that does not read all frames consistently, particularly the Mixed in Key `EnergyLevel` field.
+# id3rs
+
+Alternative for [rust-id3](https://github.com/polyfloyd/rust-id3) which does not read all frames consistently, particularly the Mixed in Key `EnergyLevel` field.
 
 - [ ] https://mutagen-specs.readthedocs.io/en/latest/id3/id3v2.4.0-frames.html#general-encapsulated-object
 
@@ -6,7 +8,10 @@ application/vnd.rekordbox.dat
 
 ## Reference documentation
 
-ID3 v2.3 is UTF-16, v2.4 heeft ook UTF-8. Oude hardware verwacht soms ID3v2.3 met UTF-16LE.
+Kid3 is een goede referentie implementatie.
+
+ID3 v2.3 is UTF-16, v2.4 heeft ook UTF-8, maar oude hardware verwacht soms ID3v2.3 met UTF-16LE.
+
 > [Unsynchronization](https://hydrogenaud.io/index.php?topic=67145.msg602042#msg602042) can only be applied to the entire tag in 2.3, whereas you can apply it to individual frames in 2.4. This means that in 2.3, the tag size field is stored as syncsafe, while the frame sizes aren't. In 2.4 all sizes are stored as syncsafe.
 
 * [ID3 tag version 2.3.0](https://id3.org/id3v2.3.0)
@@ -49,7 +54,7 @@ https://id3.org/id3v2.4.0-structure
  └───────────────────────┘
 ```
 
-Tests moeten niet [parallel](https://doc.rust-lang.org/book/ch11-02-running-tests.html) lopen, omdat ze dezelfde bestanden overschijven.
+Tests moeten niet [parallel](https://doc.rust-lang.org/book/ch11-02-running-tests.html) lopen, omdat ze dezelfde bestanden overschrijven.
 
 ```shell
 cargo test -- --test-threads=1

@@ -27,6 +27,14 @@ pub enum Frames {
     flags: u16,
     data: Vec<u8>,
   },
+  Comment {
+    id: String,
+    size: u32,
+    flags: u16,
+    language: String,
+    description: String,
+    value: String,
+  },
   ExtendedText {
     id: String,
     size: u32,
@@ -189,6 +197,16 @@ impl ID3Tag {
     }).flatten()
   }
 
+  pub fn comment(&self) -> Option<&str> {
+    self.frames.iter().find(|f| match f {
+      Frames::Comment { id, .. } => (id == "COMM"),
+      _ => false
+    }).map(|f| match f {
+      Frames::Comment { value, .. } => Some(value.as_str()),
+      _ => None
+    }).flatten()
+  }
+
   pub fn objects(&self, identifier: &str) -> Vec<&Frames> {
     self.frames.iter().filter(|f| match f {
       Frames::Object { id, .. } => (id == identifier),
@@ -322,6 +340,18 @@ mod tests {
     const FILENAME: &str = "samples/3tink";
 
     #[test]
+    pub fn test_reading() {
+      log_init();
+      let (rofile, _, _) = filenames(FILENAME);
+      let tag = ID3Tag::read(&rofile).unwrap();
+
+      assert_eq!(tag.text("IT2"), Some("Tink"));
+      assert_eq!(tag.title(), Some("Tink"));
+      assert_eq!(tag.artist(), Some("Apple"));
+      assert_eq!(tag.comment(), Some("From Big Sur"));
+    }
+
+    #[test]
     pub fn test_all_geobs() {
       log_init();
       let (rofile, _, _) = filenames(FILENAME);
@@ -377,7 +407,7 @@ mod tests {
       let tag = ID3Tag::read(&rofile).unwrap();
       assert_eq!(tag.extended_text_frame("こんにちは"), Some(&Frames::ExtendedText {
         id: "TXXX".to_string(),
-        size: 23,
+        size: 21,
         flags: 0,
         description: "こんにちは".to_string(),
         value: "世界".to_string(),
@@ -454,6 +484,7 @@ mod tests {
       assert_eq!(tag.subtitle(), Some(""));
       assert_eq!(tag.key(), Some("4A"));
       assert_eq!(tag.artist(), Some("Apple"));
+      assert_eq!(tag.comment(), Some("From Big Sur"));
     }
   }
 
@@ -542,6 +573,7 @@ mod tests {
       .fold(0u32, |sum, frame| sum + match frame {
         Frames::Frame { size, .. } => (10 + size),
         Frames::Text { size, .. } => (10 + size),
+        Frames::Comment { size, .. } => (10 + size),
         Frames::ExtendedText { size, .. } => (10 + size),
         Frames::Object { size, .. } => (10 + size),
         Frames::Padding { size } => (0 + size),
@@ -553,6 +585,7 @@ mod tests {
       .fold(0u32, |sum, frame| sum + match frame {
         Frames::Frame { size, .. } => (10 + size),
         Frames::Text { text, .. } => (10 + 1 + text.len() as u32),
+        Frames::Comment { size, .. } => (10 + size),
         Frames::ExtendedText { size, .. } => (10 + size),
         Frames::Object { size, .. } => (10 + size),
         Frames::Padding { size } => (0 + size),

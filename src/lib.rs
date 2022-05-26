@@ -87,7 +87,7 @@ impl ID3Tag {
   }
 
   fn read_header(path: impl AsRef<Path>) -> Result<(File, Header)> {
-    let mut file = std::fs::File::open(path)?;
+    let mut file = File::open(path)?;
     let mut buffer = [0; 10];
     file.read_exact(&mut buffer).unwrap();
     let (_, header) = file_header(&buffer).map_err(|_| "Header error")?;
@@ -189,10 +189,10 @@ impl ID3Tag {
 
   pub fn text(&self, identifier: &str) -> Option<&str> {
     self.frames.iter().find(|f| match f {
-      Frames::Text { id, size: _, flags: _, text: _ } => (id == identifier),
+      Frames::Text { id, .. } => (id == identifier),
       _ => false
     }).map(|f| match f {
-      Frames::Text { id: _, size: _, flags: _, text } => Some(text.as_str()),
+      Frames::Text { text, .. } => Some(text.as_str()),
       _ => None
     }).flatten()
   }
@@ -285,7 +285,7 @@ impl ID3Tag {
   fn set_text(&mut self, id3: &str, change: &str) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
-        Frames::Text { id, size: _, flags: _, text: _ } => id == id3,
+        Frames::Text { id, .. } => id == id3,
         _ => false
       }) {
       self.frames.remove(index);

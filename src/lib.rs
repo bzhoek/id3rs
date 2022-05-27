@@ -264,13 +264,13 @@ impl ID3Tag {
     self.text("CON")
   }
 
-  pub fn key(&self) -> Option<&str> {
-    self.text("KEY")
-  }
+  pub fn key(&self) -> Option<&str> { self.text("KEY") }
 
   pub fn set_title(&mut self, text: &str) {
     self.set_text("IT2", text);
   }
+
+  pub fn set_key(&mut self, text: &str) { self.set_text("KEY", text); }
 
   pub fn set_genre(&mut self, text: &str) {
     self.set_text("CON", text);
@@ -306,7 +306,7 @@ impl ID3Tag {
     self.frames.push(Frames::Text { id: id3.to_string(), size: 0, flags: 0, text: change.to_string() })
   }
 
-  fn set_comment(&mut self, description: &str, value: &str) {
+  pub fn set_comment(&mut self, description: &str, value: &str) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
         Frames::Comment { .. } => true,

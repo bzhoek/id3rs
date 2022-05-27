@@ -153,6 +153,19 @@ impl ID3Tag {
           out.write(b"\x01\xff\xfe")?;
           out.write(&*text)?;
         }
+        Frames::Comment { id, size: _, flags, language, description, value } => {
+          let len = language.len() + description.len() + value.len() + 2;
+          let vec = as_syncsafe(len as u32);
+          debug!("comment {} len {}", id, len);
+          out.write(id.as_ref())?;
+          out.write(&*vec)?;
+          out.write(&flags.to_be_bytes())?;
+          out.write(b"\x03")?;
+          out.write(language.as_bytes())?;
+          out.write(description.as_bytes())?;
+          out.write(b"\x00")?;
+          out.write(value.as_bytes())?;
+        }
         Frames::ExtendedText { id, size: _, flags, description, value } => {
           let len = description.len() + value.len() + 2;
           let vec = as_syncsafe(len as u32);
@@ -291,6 +304,24 @@ impl ID3Tag {
       self.frames.remove(index);
     }
     self.frames.push(Frames::Text { id: id3.to_string(), size: 0, flags: 0, text: change.to_string() })
+  }
+
+  fn set_comment(&mut self, description: &str, value: &str) {
+    if let Some(index) = self.frames.iter().position(|frame|
+      match frame {
+        Frames::Comment { .. } => true,
+        _ => false
+      }) {
+      self.frames.remove(index);
+    }
+    self.frames.push(Frames::Comment {
+      id: "COMM".to_string(),
+      size: 0,
+      flags: 0,
+      language: "eng".to_string(),
+      description: description.to_string(),
+      value: value.to_string(),
+    })
   }
 
   pub fn set_extended_text(&mut self, name: &str, value: &str) {
@@ -521,6 +552,16 @@ mod tests {
     let tag = ID3Tag::read(&rofile).unwrap();
     assert_eq!(tag.frames.len(), 11);
     assert_eq!(tag.extended_text("OriginalTitle"), None);
+  }
+
+  #[test]
+  pub fn test_change_comment() {
+    rw_test("samples/4tink", |(rofile, outfile, _)| {
+      let mut tag = ID3Tag::read(&rofile).unwrap();
+      tag.set_comment("", "New comment");
+      tag.write(&outfile).unwrap();
+      assert_eq!(mpck(&rofile), mpck(&outfile));
+    });
   }
 
   #[test]

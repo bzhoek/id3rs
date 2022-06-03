@@ -67,6 +67,7 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + S
 pub struct ID3Tag {
   pub filepath: String,
   pub frames: Vec<Frames>,
+  pub dirty: bool,
 }
 
 const ID3HEADER_SIZE: u64 = 10;
@@ -83,7 +84,7 @@ impl ID3Tag {
       v => Err(format!("Invalid version: {}", v))?
     };
 
-    Ok(ID3Tag { filepath: path.as_ref().to_str().unwrap().to_string(), frames: result })
+    Ok(ID3Tag { filepath: path.as_ref().to_str().unwrap().to_string(), frames: result, dirty: false })
   }
 
   fn read_header(path: impl AsRef<Path>) -> Result<(File, Header)> {
@@ -284,7 +285,7 @@ impl ID3Tag {
       }) {
       self.frames.remove(index);
     }
-    self.frames.push(Frames::Object {
+    self.push_new_frame(Frames::Object {
       id: "GEOB".to_string(),
       size: 0,
       flags: 0,
@@ -303,7 +304,12 @@ impl ID3Tag {
       }) {
       self.frames.remove(index);
     }
-    self.frames.push(Frames::Text { id: id3.to_string(), size: 0, flags: 0, text: change.to_string() })
+    self.push_new_frame(Frames::Text { id: id3.to_string(), size: 0, flags: 0, text: change.to_string() });
+  }
+
+  fn push_new_frame(&mut self, frames: Frames) {
+    self.frames.push(frames);
+    self.dirty = true
   }
 
   pub fn set_comment(&mut self, description: &str, value: &str) {
@@ -314,7 +320,7 @@ impl ID3Tag {
       }) {
       self.frames.remove(index);
     }
-    self.frames.push(Frames::Comment {
+    self.push_new_frame(Frames::Comment {
       id: "COMM".to_string(),
       size: 0,
       flags: 0,
@@ -332,7 +338,7 @@ impl ID3Tag {
       }) {
       self.frames.remove(index);
     }
-    self.frames.push(Frames::ExtendedText { id: "TXXX".to_string(), size: 0, flags: 0, description: name.to_string(), value: value.to_string() })
+    self.push_new_frame(Frames::ExtendedText { id: "TXXX".to_string(), size: 0, flags: 0, description: name.to_string(), value: value.to_string() });
   }
 }
 

@@ -57,7 +57,7 @@ impl From<u8> for Protection {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Frame {
+pub struct FrameHeader {
   version: Version,
   layer: Layer,
   crc: Protection,
@@ -65,41 +65,37 @@ pub struct Frame {
 
 
 #[allow(dead_code)]
-fn do_everything_bits(i: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8, u8, u8)> {
-  let (i, sync) = tag(0b111, 3usize)(i)?;
-  let (i, version) = take(2usize)(i)?;
+fn do_everything_bits(i: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8, u8)> {
+  let (i, _) = tag(0b1111, 4usize)(i)?;
+  let (i, id) = take(1usize)(i)?;
   let (i, layer) = take(2usize)(i)?;
-  let (i, crc) = take(1usize)(i)?;
-  Ok((i, (sync, version, layer, crc)))
+  let (i, protected) = take(1usize)(i)?;
+  Ok((i, (id, layer, protected)))
 }
 
 #[allow(dead_code)]
-fn file_header(input: &[u8]) -> IResult<&[u8], Frame> {
+fn frame_header(input: &[u8]) -> IResult<&[u8], FrameHeader> {
   let (input, _) = take_until(b"\xff".as_bytes())(input)?;
+  let (input, _) = nom::bytes::streaming::take(1u32)(input)?;
+  let (input, (version, layer, crc)) = bits(do_everything_bits)(input)?;
   println!("{:?}", input.len());
-  let (input, (_, version, layer, crc)) = bits(do_everything_bits)(input)?;
-  println!("{:?}", input.len());
-  // bits(header)(in)
-  // let (input, frame) = nom::bits::complete::tag(0b111, 3usize)(input)?;
-  // let (_input, (sync, version, layer, crc))
-  //   = bits(tuple((take(3usize), take(2usize), take(2usize), take(1usize))))(input)?;
-  Ok((input, Frame { version: Version::from(version), layer: Layer::from(layer), crc: Protection::from(crc) }))
+  let frame = FrameHeader { version: Version::from(version), layer: Layer::from(layer), crc: Protection::from(crc) };
+  Ok((input, frame))
 }
 
 #[cfg(test)]
 mod tests {
-  use crate::mp3::{file_header, Frame, Layer, Protection, Version};
+  use super::*;
 
   #[test]
-  fn find_signature() {
+  fn find_frame_header() {
     let buffer = include_bytes!("../samples/4tink.mp3");
-    println!("{}", buffer.len()); // 12884121 - 12841795
-    let (position, frame) = file_header(&buffer[1114..]).ok().unwrap();
-    assert_eq!(buffer.len() - position.len(), 1125);
+    let (position, frame) = frame_header(&buffer[1114..]).ok().unwrap();
+    assert_eq!(buffer.len() - position.len(), 1126);
     println!("{:?}", frame);
-    assert_eq!(frame, Frame {
-      version: Version::Version1,
-      layer: Layer::Layer1,
+    assert_eq!(frame, FrameHeader {
+      version: Version::Reserved,
+      layer: Layer::Layer3,
       crc: Protection::Unprotected,
     });
   }

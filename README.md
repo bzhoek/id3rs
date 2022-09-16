@@ -63,3 +63,12 @@ cargo test -- --test-threads=1
 ### Ring buffer
 
 Telkens 1K lezen en een subset minus frame header doorzoeken, daarna seek - frame header en volgende 1K lezen.
+
+## MP3
+
+Data wordt voorafgegaan door een frame header, gevolgd door het frame met samples. Afhankelijk van de layer zijn dat er 384 (I) of 1152 (II & III).
+
+Samples-per-frame: 1152 / 8 = 144 bytes
+       Frame-size: (144 * Bit-rate / Sample-rate) + (1 if Padding-bit)
+         Bit-rate: 12800
+      Sample-rate: 44100

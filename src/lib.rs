@@ -203,7 +203,7 @@ impl ID3Tag {
 
   pub fn text(&self, identifier: &str) -> Option<&str> {
     self.frames.iter().find(|f| match f {
-      Frames::Text { id, .. } => (id == identifier),
+      Frames::Text { id, .. } => id == identifier,
       _ => false
     }).map(|f| match f {
       Frames::Text { text, .. } => Some(text.as_str()),
@@ -213,7 +213,7 @@ impl ID3Tag {
 
   pub fn comment(&self) -> Option<&str> {
     self.frames.iter().find(|f| match f {
-      Frames::Comment { id, .. } => (id == "COMM"),
+      Frames::Comment { id, .. } => id == "COMM",
       _ => false
     }).map(|f| match f {
       Frames::Comment { value, .. } => Some(value.as_str()),
@@ -223,21 +223,21 @@ impl ID3Tag {
 
   pub fn objects(&self, identifier: &str) -> Vec<&Frames> {
     self.frames.iter().filter(|f| match f {
-      Frames::Object { id, .. } => (id == identifier),
+      Frames::Object { id, .. } => id == identifier,
       _ => false
     }).collect()
   }
 
   pub fn object_by_filename(&self, name: &str) -> Option<&Frames> {
     self.frames.iter().find(|f| match f {
-      Frames::Object { id, filename, .. } => (id == "GEOB" && filename == name),
+      Frames::Object { id, filename, .. } => id == "GEOB" && filename == name,
       _ => false
     })
   }
 
   pub fn extended_text_frame(&self, name: &str) -> Option<&Frames> {
     self.frames.iter().find(|f| match f {
-      Frames::ExtendedText { description, .. } => (description == name),
+      Frames::ExtendedText { description, .. } => description == name,
       _ => false
     })
   }
@@ -618,24 +618,24 @@ mod tests {
     let tag = ID3Tag::read(&rofile).unwrap();
     let sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
-        Frames::Frame { size, .. } => (10 + size),
-        Frames::Text { size, .. } => (10 + size),
-        Frames::Comment { size, .. } => (10 + size),
-        Frames::ExtendedText { size, .. } => (10 + size),
-        Frames::Object { size, .. } => (10 + size),
-        Frames::Padding { size } => (0 + size),
+        Frames::Frame { size, .. } => 10 + size,
+        Frames::Text { size, .. } => 10 + size,
+        Frames::Comment { size, .. } => 10 + size,
+        Frames::ExtendedText { size, .. } => 10 + size,
+        Frames::Object { size, .. } => 10 + size,
+        Frames::Padding { size } => 0 + size,
       });
 
     assert_eq!(sum, 1114);
 
     let _sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
-        Frames::Frame { size, .. } => (10 + size),
-        Frames::Text { text, .. } => (10 + 1 + text.len() as u32),
-        Frames::Comment { size, .. } => (10 + size),
-        Frames::ExtendedText { size, .. } => (10 + size),
-        Frames::Object { size, .. } => (10 + size),
-        Frames::Padding { size } => (0 + size),
+        Frames::Frame { size, .. } => 10 + size,
+        Frames::Text { text, .. } => 10 + 1 + text.len() as u32,
+        Frames::Comment { size, .. } => 10 + size,
+        Frames::ExtendedText { size, .. } => 10 + size,
+        Frames::Object { size, .. } => 10 + size,
+        Frames::Padding { size } => 0 + size,
       });
 
     let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67

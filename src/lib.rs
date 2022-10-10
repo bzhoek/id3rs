@@ -556,7 +556,7 @@ mod tests {
     let (rofile, _, _) = filenames("samples/4tink");
 
     let tag = ID3Tag::read(&rofile).unwrap();
-    assert_eq!(tag.frames.len(), 11);
+    assert_eq!(tag.frames.len(), 12);
     assert_eq!(tag.extended_text("OriginalTitle"), None);
   }
 

@@ -225,7 +225,7 @@ mod tests {
     file.read_exact(&mut input).unwrap();
 
     let (_, result) = all_frames_v24(&input).ok().unwrap();
-    assert_eq!(11, result.len());
+    assert_eq!(12, result.len());
   }
 
   #[test]
@@ -281,8 +281,13 @@ mod tests {
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
     assert_eq!(frame, Frames::Text { id: "IT3".to_string(), size: 1, flags: 0, text: "".to_string() });
 
+    let (input, frame) = generic_frame_v24(&input).ok().unwrap();
+    assert_matches!(frame, Frames::Frame{ id, ..} => {
+      assert_eq!(id, "GRP1".to_string());
+    });
+
     let (_input, frame) = padding(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Padding { size: 846 });
+    assert_eq!(frame, Frames::Padding { size: 831 });
   }
 
   fn filenames(base: &str) -> (String, String, String) {

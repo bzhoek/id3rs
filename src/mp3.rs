@@ -2,8 +2,6 @@ use nom::{AsBytes, IResult};
 use nom::bits::{bits, streaming::take};
 use nom::bits::streaming::tag;
 use nom::bytes::streaming::take_until;
-use nom::error::Error;
-use nom::sequence::tuple;
 
 #[derive(Debug, PartialEq)]
 enum Version {
@@ -111,7 +109,7 @@ fn frame_header_mode(i: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8, u8, 
 }
 
 // http://id3lib.sourceforge.net/id3/mp3frame.html and http://www.mp3-tech.org/programmer/frame_header.html
-#[allow(dead_code)]
+#[allow(dead_code, unused)]
 fn frame_header(input: &[u8]) -> IResult<&[u8], FrameHeader> {
   let (input, _) = take_until(b"\xff".as_bytes())(input)?;
   let (input, _) = nom::bytes::streaming::take(1u32)(input)?;

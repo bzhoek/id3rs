@@ -3,6 +3,7 @@ use std::str::from_utf8;
 use log::debug;
 use nom::branch::alt;
 use nom::bytes::streaming::{tag, take};
+use nom::character::streaming::one_of;
 use nom::combinator::{eof, map};
 use nom::IResult;
 use nom::multi::{fold_many_m_n, many_till};
@@ -10,7 +11,7 @@ use nom::number::complete::be_u32;
 use nom::number::streaming::{be_u16, be_u8, le_u16, le_u8};
 use nom::sequence::{pair, tuple};
 
-use crate::{Frames, Header};
+use crate::{COMMENT_TAG, EXTENDED_TAG, Frames, OBJECT_TAG, Header};
 
 fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
   map(
@@ -31,14 +32,14 @@ fn data_size_v23(input: &[u8]) -> IResult<&[u8], u32> {
 pub fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
   map(
     many_till(
-      alt((padding, extended_text_frame_v23, comment_frame_v23, text_frame_v23, object_frame_v23, generic_frame_v23)), eof),
+      alt((padding, extended_text_frame_v23, comment_frame_v23, object_frame_v23, text_frame_v23, generic_frame_v23)), eof),
     |(frames, _)| frames)(input)
 }
 
 pub fn all_frames_v24(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
   map(
     many_till(
-      alt((padding, extended_text_frame_v24, comment_frame_v24, text_frame_v24, object_frame_v24, generic_frame_v24)), eof),
+      alt((padding, extended_text_frame_v24, comment_frame_v24, object_frame_v24, text_frame_v24, generic_frame_v24)), eof),
     |(frames, _)| frames)(input)
 }
 
@@ -51,7 +52,7 @@ fn extended_text_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
 }
 
 fn extended_text_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
-  let (input, (id, size, flags)) = tuple((tag("TXXX"), data_size, be_u16))(input)?;
+  let (input, (id, size, flags)) = tuple((tag(EXTENDED_TAG), data_size, be_u16))(input)?;
   let id = from_utf8(id).unwrap().to_string();
   debug!("extended {}", id);
   let (input, (encoding, data)) = pair(be_u8, take(size - 1))(input)?;
@@ -83,9 +84,9 @@ fn text_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
 }
 
 fn text_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
-  let (input, (_, id, size, flags)) =
+  let (input, (pid, id, size, flags)) =
     tuple((
-      tag("T"),
+      one_of("GT"),
       map(
         take(3u8),
         |res| from_utf8(res).unwrap(),
@@ -93,8 +94,9 @@ fn text_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IRes
       data_size, be_u16))(input)?;
   let (input, (encoding, data)) = pair(be_u8, take(size - 1))(input)?;
   let (_data, text) = encoded_string(encoding, data)?;
-  debug!("utf8v23 {} {} {}", id, size, text);
-  Ok((input, Frames::Text { id: id.to_string(), size, flags, text }))
+  let merged = format!("{}{}", pid, id);
+  debug!("utf8v23 {} {} {}", merged, size, text);
+  Ok((input, Frames::Text { id: merged, size, flags, text }))
 }
 
 fn comment_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
@@ -108,7 +110,7 @@ fn comment_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
 fn comment_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
   let (input, (_id, size, flags, encoding, language)) =
     tuple((
-      tag("COMM"),
+      tag(COMMENT_TAG),
       data_size,
       be_u16,
       be_u8,
@@ -120,7 +122,7 @@ fn comment_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> I
   let (input, data) = take(size - 4)(input)?;
   let (_data, (description, value)) = encoded_string_pair(encoding, data)?;
   debug!("comment {} {} {} {}", size, language, description, value);
-  Ok((input, Frames::Comment { id: "COMM".to_string(), size, flags, language: language.to_string(), description, value }))
+  Ok((input, Frames::Comment { id: COMMENT_TAG.to_string(), size, flags, language: language.to_string(), description, value }))
 }
 
 fn generic_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
@@ -148,7 +150,7 @@ fn object_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
 }
 
 fn object_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
-  let (input, (id, size, flags)) = tuple((tag("GEOB"), data_size, be_u16))(input)?;
+  let (input, (id, size, flags)) = tuple((tag(OBJECT_TAG), data_size, be_u16))(input)?;
   let id = from_utf8(id).unwrap().to_string();
   debug!("object {:?} {}",  id, size);
   let offset = input.len();
@@ -207,7 +209,7 @@ mod tests {
 
   use assert_matches::assert_matches;
 
-  use crate::log_init;
+  use crate::{ARTIST_TAG, GENRE_TAG, GROUPING_TAG, KEY_TAG, log_init, SUBTITLE_TAG, TITLE_TAG};
 
   use super::*;
 
@@ -245,20 +247,20 @@ mod tests {
 
     let data = "Hello, world".as_bytes().to_vec();
     let (input, frame) = object_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Object { id: "GEOB".to_string(), size: 80, flags: 0, mime_type: "application/vnd.rekordbox.dat".to_string(), filename: "ANLZ0000.DAT".to_string(), description: "Rekordbox Analysis Data".to_string(), data: data });
+    assert_eq!(frame, Frames::Object { id: OBJECT_TAG.to_string(), size: 80, flags: 0, mime_type: "application/vnd.rekordbox.dat".to_string(), filename: "ANLZ0000.DAT".to_string(), description: "Rekordbox Analysis Data".to_string(), data: data });
 
     let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::ExtendedText { id: "TXXX".to_string(), size: 12, flags: 0, description: "Hello".to_string(), value: "World".to_string() });
+    assert_eq!(frame, Frames::ExtendedText { id: EXTENDED_TAG.to_string(), size: 12, flags: 0, description: "Hello".to_string(), value: "World".to_string() });
 
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "IT2".to_string(), size: 5, flags: 0, text: "Tink".to_string() });
+    assert_eq!(frame, Frames::Text { id: TITLE_TAG.to_string(), size: 5, flags: 0, text: "Tink".to_string() });
 
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "PE1".to_string(), size: 6, flags: 0, text: "Apple".to_string() });
+    assert_eq!(frame, Frames::Text { id: ARTIST_TAG.to_string(), size: 6, flags: 0, text: "Apple".to_string() });
 
     let (input, frame) = generic_frame_v24(&input).ok().unwrap();
     assert_matches!(frame, Frames::Frame{ id, ..} => {
-      assert_eq!(id, "COMM".to_string());
+      assert_eq!(id, COMMENT_TAG.to_string());
       // TODO: compare actual picture
       // if let Frames::Frame { id, size, flags, data } = frame {
       //   let mut out = File::create("APIC.bin").unwrap();
@@ -267,23 +269,24 @@ mod tests {
     });
 
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "CON".to_string(), size: 7, flags: 0, text: "sounds".to_string() });
+    assert_eq!(frame, Frames::Text { id: GENRE_TAG.to_string(), size: 7, flags: 0, text: "sounds".to_string() });
 
     let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::ExtendedText { id: "TXXX".to_string(), size: 23, flags: 0, description: "こんにちは".to_string(), value: "世界".to_string() });
+    assert_eq!(frame, Frames::ExtendedText { id: EXTENDED_TAG.to_string(), size: 23, flags: 0, description: "こんにちは".to_string(), value: "世界".to_string() });
 
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "KEY".to_string(), size: 3, flags: 0, text: "4A".to_string() });
+    assert_eq!(frame, Frames::Text { id: KEY_TAG.to_string(), size: 3, flags: 0, text: "4A".to_string() });
 
     let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::ExtendedText { id: "TXXX".to_string(), size: 14, flags: 0, description: "EnergyLevel".to_string(), value: "6".to_string() });
+    assert_eq!(frame, Frames::ExtendedText { id: EXTENDED_TAG.to_string(), size: 14, flags: 0, description: "EnergyLevel".to_string(), value: "6".to_string() });
 
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: "IT3".to_string(), size: 1, flags: 0, text: "".to_string() });
+    assert_eq!(frame, Frames::Text { id: SUBTITLE_TAG.to_string(), size: 1, flags: 0, text: "".to_string() });
 
     let (input, frame) = generic_frame_v24(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, ..} => {
-      assert_eq!(id, "GRP1".to_string());
+    assert_matches!(frame, Frames::Frame{ id, data, ..} => {
+      assert_eq!(id, GROUPING_TAG.to_string());
+      // let str = encoded_string(data);
     });
 
     let (_input, frame) = padding(&input).ok().unwrap();

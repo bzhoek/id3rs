@@ -6,6 +6,16 @@ use std::process::Command;
 
 use log::{debug, LevelFilter};
 
+static TITLE_TAG: &str = "TIT2";
+static SUBTITLE_TAG: &str = "TIT3";
+static ARTIST_TAG: &str = "TPE1";
+static GENRE_TAG: &str = "TCON";
+static KEY_TAG: &str = "TKEY";
+static COMMENT_TAG: &str = "COMM";
+static OBJECT_TAG: &str = "GEOB";
+static GROUPING_TAG: &str = "GRP1";
+static EXTENDED_TAG: &str = "TXXX";
+
 use crate::patterns::{all_frames_v23, all_frames_v24, as_syncsafe, file_header};
 
 mod mp3;
@@ -147,7 +157,6 @@ impl ID3Tag {
           let len = text.len() as u32 + 3;
           let vec = as_syncsafe(len);
           debug!("text {} len {}", id, len);
-          out.write(b"T")?;
           out.write(id.as_ref())?;
           out.write(&*vec)?;
           out.write(&flags.to_be_bytes())?;
@@ -213,7 +222,7 @@ impl ID3Tag {
 
   pub fn comment(&self) -> Option<&str> {
     self.frames.iter().find(|f| match f {
-      Frames::Comment { id, .. } => id == "COMM",
+      Frames::Comment { id, .. } => id == COMMENT_TAG,
       _ => false
     }).map(|f| match f {
       Frames::Comment { value, .. } => Some(value.as_str()),
@@ -230,7 +239,7 @@ impl ID3Tag {
 
   pub fn object_by_filename(&self, name: &str) -> Option<&Frames> {
     self.frames.iter().find(|f| match f {
-      Frames::Object { id, filename, .. } => id == "GEOB" && filename == name,
+      Frames::Object { id, filename, .. } => id == OBJECT_TAG && filename == name,
       _ => false
     })
   }
@@ -249,44 +258,47 @@ impl ID3Tag {
     }).flatten()
   }
 
+
   pub fn title(&self) -> Option<&str> {
-    self.text("IT2")
+    self.text(TITLE_TAG)
   }
 
   pub fn subtitle(&self) -> Option<&str> {
-    self.text("IT3")
+    self.text(SUBTITLE_TAG)
   }
 
   pub fn artist(&self) -> Option<&str> {
-    self.text("PE1")
+    self.text(ARTIST_TAG)
   }
 
   pub fn genre(&self) -> Option<&str> {
-    self.text("CON")
+    self.text(GENRE_TAG)
   }
 
-  pub fn key(&self) -> Option<&str> { self.text("KEY") }
+  pub fn key(&self) -> Option<&str> { self.text(KEY_TAG) }
+
+  pub fn grouping(&self) -> Option<&str> { self.text(GROUPING_TAG) }
 
   pub fn set_title(&mut self, text: &str) {
-    self.set_text("IT2", text);
+    self.set_text(TITLE_TAG, text);
   }
 
-  pub fn set_key(&mut self, text: &str) { self.set_text("KEY", text); }
+  pub fn set_key(&mut self, text: &str) { self.set_text(KEY_TAG, text); }
 
   pub fn set_genre(&mut self, text: &str) {
-    self.set_text("CON", text);
+    self.set_text(GENRE_TAG, text);
   }
 
   pub fn set_object(&mut self, name: &str, mime_type: &str, description: &str, data: &[u8]) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
-        Frames::Object { id, filename, .. } => id == "GEOB" && filename == name,
+        Frames::Object { id, filename, .. } => id == OBJECT_TAG && filename == name,
         _ => false
       }) {
       self.frames.remove(index);
     }
     self.push_new_frame(Frames::Object {
-      id: "GEOB".to_string(),
+      id: OBJECT_TAG.to_string(),
       size: 0,
       flags: 0,
       filename: name.to_string(),
@@ -321,7 +333,7 @@ impl ID3Tag {
       self.frames.remove(index);
     }
     self.push_new_frame(Frames::Comment {
-      id: "COMM".to_string(),
+      id: COMMENT_TAG.to_string(),
       size: 0,
       flags: 0,
       language: "eng".to_string(),
@@ -338,7 +350,7 @@ impl ID3Tag {
       }) {
       self.frames.remove(index);
     }
-    self.push_new_frame(Frames::ExtendedText { id: "TXXX".to_string(), size: 0, flags: 0, description: name.to_string(), value: value.to_string() });
+    self.push_new_frame(Frames::ExtendedText { id: EXTENDED_TAG.to_string(), size: 0, flags: 0, description: name.to_string(), value: value.to_string() });
   }
 }
 
@@ -382,7 +394,7 @@ mod tests {
       let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3Tag::read(&rofile).unwrap();
 
-      assert_eq!(tag.text("IT2"), Some("Tink"));
+      assert_eq!(tag.text(TITLE_TAG), Some("Tink"));
       assert_eq!(tag.title(), Some("Tink"));
       assert_eq!(tag.artist(), Some("Apple"));
       assert_eq!(tag.comment(), Some("From Big Sur"));
@@ -394,8 +406,8 @@ mod tests {
       let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3Tag::read(&rofile).unwrap();
       let data = "Hello, world".as_bytes().to_vec();
-      assert_eq!(tag.objects("GEOB"), vec![&Frames::Object {
-        id: "GEOB".to_string(),
+      assert_eq!(tag.objects(OBJECT_TAG), vec![&Frames::Object {
+        id: OBJECT_TAG.to_string(),
         size: 80,
         flags: 0,
         mime_type: "application/vnd.rekordbox.dat".to_string(),
@@ -413,7 +425,7 @@ mod tests {
       let data = "Hello, world".as_bytes().to_vec();
       let option = tag.object_by_filename("ANLZ0000.DAT");
       assert_eq!(option, Some(&Frames::Object {
-        id: "GEOB".to_string(),
+        id: OBJECT_TAG.to_string(),
         size: 80,
         flags: 0,
         mime_type: "application/vnd.rekordbox.dat".to_string(),
@@ -429,7 +441,7 @@ mod tests {
       let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3Tag::read(&rofile).unwrap();
       assert_eq!(tag.extended_text_frame("Hello"), Some(&Frames::ExtendedText {
-        id: "TXXX".to_string(),
+        id: EXTENDED_TAG.to_string(),
         size: 12,
         flags: 0,
         description: "Hello".to_string(),
@@ -443,7 +455,7 @@ mod tests {
       let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3Tag::read(&rofile).unwrap();
       assert_eq!(tag.extended_text_frame("こんにちは"), Some(&Frames::ExtendedText {
-        id: "TXXX".to_string(),
+        id: EXTENDED_TAG.to_string(),
         size: 21,
         flags: 0,
         description: "こんにちは".to_string(),
@@ -514,12 +526,13 @@ mod tests {
       let (rofile, _, _) = filenames("samples/4tink");
       let tag = ID3Tag::read(&rofile).unwrap();
 
-      assert_eq!(tag.text("IT2"), Some("Tink"));
+      assert_eq!(tag.text(TITLE_TAG), Some("Tink"));
       assert_eq!(tag.extended_text("EnergyLevel"), Some("6"));
       assert_eq!(tag.extended_text("OriginalTitle"), None);
       assert_eq!(tag.title(), Some("Tink"));
       assert_eq!(tag.subtitle(), Some(""));
       assert_eq!(tag.key(), Some("4A"));
+      assert_eq!(tag.grouping(), Some("2241"));
       assert_eq!(tag.artist(), Some("Apple"));
       assert_eq!(tag.comment(), Some("From Big Sur"));
     }
@@ -531,7 +544,7 @@ mod tests {
     let (rofile, _, _) = filenames("samples/4tink");
     let tag = ID3Tag::read(&rofile).unwrap();
 
-    assert_eq!(tag.text("CON"), Some("sounds"));
+    assert_eq!(tag.text(GENRE_TAG), Some("sounds"));
     assert_eq!(tag.genre(), Some("sounds"));
   }
 
@@ -539,7 +552,7 @@ mod tests {
   pub fn test_changing_genre() {
     rw_test("samples/4tink", |(rofile, _, rwfile)| {
       let mut tag = ID3Tag::read(&rwfile).unwrap();
-      assert_eq!(tag.text("CON"), Some("sounds"));
+      assert_eq!(tag.text(GENRE_TAG), Some("sounds"));
       assert_eq!(tag.genre(), Some("sounds"));
       tag.set_genre("notech");
       tag.write(&rwfile).unwrap();

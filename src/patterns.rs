@@ -11,7 +11,7 @@ use nom::number::complete::be_u32;
 use nom::number::streaming::{be_u16, be_u8, le_u16, le_u8};
 use nom::sequence::{pair, tuple};
 
-use crate::{COMMENT_TAG, EXTENDED_TAG, Frames, Header, OBJECT_TAG};
+use crate::{COMMENT_TAG, EXTENDED_TAG, Frames, Header, OBJECT_TAG, PICTURE_TAG};
 
 fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
   map(
@@ -31,15 +31,29 @@ fn data_size_v23(input: &[u8]) -> IResult<&[u8], u32> {
 
 pub fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
   map(
-    many_till(
-      alt((padding, extended_text_frame_v23, comment_frame_v23, object_frame_v23, text_frame_v23, generic_frame_v23)), eof),
+    many_till(alt((
+      padding,
+      extended_text_frame_v23,
+      comment_frame_v23,
+      object_frame_v23,
+      picture_frame_v23,
+      text_frame_v23,
+      generic_frame_v23)),
+      eof),
     |(frames, _)| frames)(input)
 }
 
 pub fn all_frames_v24(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
   map(
     many_till(
-      alt((padding, extended_text_frame_v24, comment_frame_v24, object_frame_v24, text_frame_v24, generic_frame_v24)), eof),
+      alt((padding,
+        extended_text_frame_v24,
+        comment_frame_v24,
+        object_frame_v24,
+        picture_frame_v24,
+        text_frame_v24,
+        generic_frame_v24)),
+      eof),
     |(frames, _)| frames)(input)
 }
 
@@ -161,6 +175,29 @@ fn object_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IR
   debug!("mime {}, filename {}, size {}, description {}", mime_type, filename, remaining, description);
   let (input, data) = take(remaining)(input)?;
   Ok((input, Frames::Object { id, size, flags, mime_type, filename, description, data: data.into() }))
+}
+
+fn picture_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+  picture_frame(input, data_size_v23)
+}
+
+fn picture_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+  picture_frame(input, data_size_v24)
+}
+
+fn picture_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
+  let (input, (id, size, flags)) = tuple((tag(PICTURE_TAG), data_size, be_u16))(input)?;
+  let id = from_utf8(id).unwrap().to_string();
+  debug!("picture {:?} {}",  id, size);
+  let start = input.len();
+  let (input, encoding) = be_u8(input)?;
+  let (input, mime_type) = terminated_utf8(input)?;
+  let (input, kind) = be_u8(input)?;
+  let (input, description) = encoded_string(encoding, input)?;
+  let remaining = size - (start - input.len()) as u32;
+  debug!("mime {}, size {}, description {}", mime_type, remaining, description);
+  let (input, data) = take(remaining)(input)?;
+  Ok((input, Frames::Picture { id, size, flags, mime_type, kind, description, data: data.into() }))
 }
 
 fn terminated_utf8(input: &[u8]) -> IResult<&[u8], String> {

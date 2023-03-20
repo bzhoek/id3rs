@@ -6,6 +6,8 @@ use std::process::Command;
 
 use log::{debug, LevelFilter};
 
+use crate::patterns::{all_frames_v23, all_frames_v24, as_syncsafe, file_header};
+
 static TITLE_TAG: &str = "TIT2";
 static SUBTITLE_TAG: &str = "TIT3";
 static ARTIST_TAG: &str = "TPE1";
@@ -15,8 +17,7 @@ static COMMENT_TAG: &str = "COMM";
 static OBJECT_TAG: &str = "GEOB";
 static GROUPING_TAG: &str = "GRP1";
 static EXTENDED_TAG: &str = "TXXX";
-
-use crate::patterns::{all_frames_v23, all_frames_v24, as_syncsafe, file_header};
+static PICTURE_TAG: &str = "APIC";
 
 mod mp3;
 mod patterns;
@@ -64,6 +65,15 @@ pub enum Frames {
     flags: u16,
     mime_type: String,
     filename: String,
+    description: String,
+    data: Vec<u8>,
+  },
+  Picture {
+    id: String,
+    size: u32,
+    flags: u16,
+    mime_type: String,
+    kind: u8,
     description: String,
     data: Vec<u8>,
   },
@@ -155,21 +165,23 @@ impl ID3Tag {
         Frames::Text { id, size: _, flags, text } => {
           let text: Vec<u8> = text.encode_utf16().map(|w| w.to_le_bytes()).flatten().collect();
           let len = text.len() as u32 + 3;
-          let vec = as_syncsafe(len);
+          let size = as_syncsafe(len);
           debug!("text {} len {}", id, len);
           out.write(id.as_ref())?;
-          out.write(&*vec)?;
+          out.write(&*size)?;
           out.write(&flags.to_be_bytes())?;
+
           out.write(b"\x01\xff\xfe")?;
           out.write(&*text)?;
         }
         Frames::Comment { id, size: _, flags, language, description, value } => {
           let len = language.len() + description.len() + value.len() + 2;
-          let vec = as_syncsafe(len as u32);
+          let size = as_syncsafe(len as u32);
           debug!("comment {} len {}", id, len);
           out.write(id.as_ref())?;
-          out.write(&*vec)?;
+          out.write(&*size)?;
           out.write(&flags.to_be_bytes())?;
+
           out.write(b"\x03")?;
           out.write(language.as_bytes())?;
           out.write(description.as_bytes())?;
@@ -178,11 +190,12 @@ impl ID3Tag {
         }
         Frames::ExtendedText { id, size: _, flags, description, value } => {
           let len = description.len() + value.len() + 2;
-          let vec = as_syncsafe(len as u32);
+          let size = as_syncsafe(len as u32);
           debug!("extended {} len {}", id, len);
           out.write(id.as_ref())?;
-          out.write(&*vec)?;
+          out.write(&*size)?;
           out.write(&flags.to_be_bytes())?;
+
           out.write(b"\x03")?;
           out.write(description.as_bytes())?;
           out.write(b"\x00")?;
@@ -190,16 +203,33 @@ impl ID3Tag {
         }
         Frames::Object { id, flags, mime_type, filename, description, data, .. } => {
           let len = mime_type.len() + filename.len() + description.len() + 4 + data.len();
-          let vec = as_syncsafe(len as u32);
-          out.write(id.as_ref())?;
+          let size = as_syncsafe(len as u32);
           debug!("object {} len {}", id, len);
-          out.write(&*vec)?;
+          out.write(id.as_ref())?;
+          out.write(&*size)?;
           out.write(&flags.to_be_bytes())?;
+
           out.write(b"\x03")?;
           out.write(mime_type.as_bytes())?;
           out.write(b"\x00")?;
           out.write(filename.as_bytes())?;
           out.write(b"\x00")?;
+          out.write(description.as_bytes())?;
+          out.write(b"\x00")?;
+          out.write(data)?;
+        }
+        Frames::Picture { id, flags, kind, mime_type, description, data, .. } => {
+          let len = mime_type.len() + description.len() + 4 + data.len();
+          let size = as_syncsafe(len as u32);
+          debug!("picture {} len {}", id, len);
+          out.write(id.as_ref())?;
+          out.write(&*size)?;
+          out.write(&flags.to_be_bytes())?;
+
+          out.write(b"\x03")?;
+          out.write(mime_type.as_bytes())?;
+          out.write(b"\x00")?;
+          out.write(&kind.to_be_bytes())?;
           out.write(description.as_bytes())?;
           out.write(b"\x00")?;
           out.write(data)?;
@@ -244,13 +274,6 @@ impl ID3Tag {
     })
   }
 
-  pub fn extended_text_frame(&self, name: &str) -> Option<&Frames> {
-    self.frames.iter().find(|f| match f {
-      Frames::ExtendedText { description, .. } => description == name,
-      _ => false
-    })
-  }
-
   pub fn extended_text(&self, name: &str) -> Option<&str> {
     self.extended_text_frame(name).map(|f| match f {
       Frames::ExtendedText { value, .. } => Some(value.as_str()),
@@ -258,6 +281,19 @@ impl ID3Tag {
     }).flatten()
   }
 
+  pub fn extended_text_frame(&self, name: &str) -> Option<&Frames> {
+    self.frames.iter().find(|f| match f {
+      Frames::ExtendedText { description, .. } => description == name,
+      _ => false
+    })
+  }
+
+  pub fn attached_picture(&self, kind: u8) -> Option<&Frames> {
+    self.frames.iter().find(|f| match f {
+      Frames::Picture { kind: kind_, .. } => &kind == kind_,
+      _ => false
+    })
+  }
 
   pub fn title(&self) -> Option<&str> {
     self.text(TITLE_TAG)
@@ -351,6 +387,17 @@ impl ID3Tag {
       self.frames.remove(index);
     }
     self.push_new_frame(Frames::ExtendedText { id: EXTENDED_TAG.to_string(), size: 0, flags: 0, description: name.to_string(), value: value.to_string() });
+  }
+
+  pub fn set_attached_picture(&mut self, kind: u8, mime_type: &str, description: &str, data: &[u8]) {
+    if let Some(index) = self.frames.iter().position(|frame|
+      match frame {
+        Frames::Picture { kind: kind_, .. } => kind_ == &kind,
+        _ => false
+      }) {
+      self.frames.remove(index);
+    }
+    self.push_new_frame(Frames::Picture { id: PICTURE_TAG.to_string(), size: 0, flags: 0, kind, mime_type: mime_type.to_string(), description: description.to_string(), data: Vec::from(data) });
   }
 }
 
@@ -513,6 +560,20 @@ mod tests {
     }
 
     #[test]
+    pub fn test_attach_picture() {
+      rw_test(FILENAME, |(rofile, _, rwfile)| {
+        let mut tag = ID3Tag::read(&rwfile).unwrap();
+        let data = fs::read("cover.jpg").unwrap();
+        tag.set_attached_picture(03, "image/png", "cover", &*data);
+        tag.write(&rwfile).unwrap();
+
+        let tag = ID3Tag::read(&rwfile).unwrap();
+        let picture = tag.attached_picture(3);
+        assert!(matches!(picture, Some(Frames::Picture { data, .. })));
+      });
+    }
+
+    #[test]
     pub fn test_utf8_energy_level() {
       log_init();
       let (rofile, _, _) = filenames(FILENAME);
@@ -637,6 +698,7 @@ mod tests {
         Frames::ExtendedText { size, .. } => 10 + size,
         Frames::Object { size, .. } => 10 + size,
         Frames::Padding { size } => 0 + size,
+        Frames::Picture { size, .. } => 10 + size,
       });
 
     assert_eq!(sum, 1114);
@@ -649,6 +711,7 @@ mod tests {
         Frames::ExtendedText { size, .. } => 10 + size,
         Frames::Object { size, .. } => 10 + size,
         Frames::Padding { size } => 0 + size,
+        Frames::Picture { size, .. } => 10 + size,
       });
 
     let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67

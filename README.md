@@ -3,7 +3,6 @@
 Alternative for [rust-id3](https://github.com/polyfloyd/rust-id3) which does not read all frames consistently, particularly the Mixed in Key `EnergyLevel` field.
 
 - [ ] https://mutagen-specs.readthedocs.io/en/latest/id3/id3v2.4.0-frames.html#general-encapsulated-object
-- [ ] Ondersteuning voor images
 
 application/vnd.rekordbox.dat
 

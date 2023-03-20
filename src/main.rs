@@ -1,4 +1,4 @@
-use clap::{App, Arg, ArgMatches};
+use clap::{Arg, ArgMatches, Command};
 use env_logger::Env;
 use env_logger::Target::Stdout;
 use log::debug;
@@ -8,17 +8,17 @@ use id3rs::ID3Tag;
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 fn main() -> Result<()> {
-  let args = App::new("id3-rs")
+  let args = Command::new("id3-rs")
     .about("Rust based ID3 tagging")
     .arg(debug_arg())
-    .arg(Arg::with_name("FILE")
+    .arg(Arg::new("FILE")
       .help("File to rate")
       .required(true))
     .get_matches();
 
   configure_logging(&args);
 
-  if let Some(file) = args.value_of("FILE") {
+  if let Some(file) = args.get_one::<String>("FILE") {
     ID3Tag::read(file)?;
   };
 
@@ -26,7 +26,7 @@ fn main() -> Result<()> {
 }
 
 pub fn debug_arg() -> Arg<'static> {
-  Arg::with_name("DEBUG")
+  Arg::new("DEBUG")
     .help("Show debug logging")
     .short('d')
     .long("debug")

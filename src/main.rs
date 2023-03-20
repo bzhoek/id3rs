@@ -25,7 +25,7 @@ fn main() -> Result<()> {
   Ok(())
 }
 
-pub fn debug_arg() -> Arg {
+fn debug_arg() -> Arg {
   Arg::new("DEBUG")
     .help("Show debug logging")
     .short('d')
@@ -33,7 +33,7 @@ pub fn debug_arg() -> Arg {
     .action(ArgAction::SetTrue)
 }
 
-pub fn configure_logging(args: &ArgMatches) {
+fn configure_logging(args: &ArgMatches) {
   let filter = if args.get_flag("DEBUG") { "debug,html5ever=info" } else { "info" };
   env_logger::Builder::from_env(Env::default().default_filter_or(filter)).target(Stdout).init();
   debug!("Debug logging");

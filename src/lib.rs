@@ -448,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_all_geobs() {
+    pub fn test_all_objects() {
       log_init();
       let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3rs::read(&rofile).unwrap();
@@ -465,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    pub fn test_find_geob() {
+    pub fn test_find_object() {
       log_init();
       let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3rs::read(&rofile).unwrap();

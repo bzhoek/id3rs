@@ -41,7 +41,7 @@ impl From<u8> for Layer {
   }
 }
 
-fn bitrate_to_kpbs(bitrate: u8) -> u32 {
+fn bitrate_to_kbps(bitrate: u8) -> u32 {
   match bitrate {
     0b0001 => 32,
     0b0010 => 40,
@@ -126,7 +126,7 @@ fn frame_header(input: &[u8]) -> IResult<&[u8], FrameHeader> {
     version: Version::from(version),
     layer: Layer::from(layer),
     crc: Protection::from(crc),
-    bitrate: bitrate_to_kpbs(bitrate)
+    bitrate: bitrate_to_kbps(bitrate)
   };
   Ok((input, frame))
 }

@@ -11,7 +11,7 @@ use nom::number::complete::be_u32;
 use nom::number::streaming::{be_u16, be_u8, le_u16, le_u8};
 use nom::sequence::{pair, tuple};
 
-use crate::{COMMENT_TAG, EXTENDED_TAG, Frames, Header, OBJECT_TAG, PICTURE_TAG};
+use crate::{COMMENT_TAG, EXTENDED_TAG, Frame, Header, OBJECT_TAG, PICTURE_TAG};
 
 fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
   map(
@@ -29,7 +29,7 @@ fn data_size_v23(input: &[u8]) -> IResult<&[u8], u32> {
   be_u32(input)
 }
 
-pub fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
+pub fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frame>> {
   map(
     many_till(alt((
       padding,
@@ -43,7 +43,7 @@ pub fn all_frames_v23(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
     |(frames, _)| frames)(input)
 }
 
-pub fn all_frames_v24(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
+pub fn all_frames_v24(input: &[u8]) -> IResult<&[u8], Vec<Frame>> {
   map(
     many_till(
       alt((padding,
@@ -57,22 +57,22 @@ pub fn all_frames_v24(input: &[u8]) -> IResult<&[u8], Vec<Frames>> {
     |(frames, _)| frames)(input)
 }
 
-fn extended_text_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+fn extended_text_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
   extended_text_frame(input, data_size_v23)
 }
 
-fn extended_text_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+fn extended_text_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
   extended_text_frame(input, data_size_v24)
 }
 
-fn extended_text_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
+fn extended_text_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
   let (input, (id, size, flags)) = tuple((tag(EXTENDED_TAG), data_size, be_u16))(input)?;
   let id = from_utf8(id).unwrap().to_string();
   debug!("extended {}", id);
   let (input, (encoding, data)) = pair(be_u8, take(size - 1))(input)?;
   let (_data, (description, value)) = encoded_string_pair(encoding, data)?;
   debug!("extended {} value {}", description, value);
-  Ok((input, Frames::ExtendedText { id, size, flags, description, value }))
+  Ok((input, Frame::ExtendedText { id, size, flags, description, value }))
 }
 
 fn encoded_string_pair(encoding: u8, data: &[u8]) -> IResult<&[u8], (String, String)> {
@@ -89,15 +89,15 @@ fn encoded_string(encoding: u8, data: &[u8]) -> IResult<&[u8], String> {
   }
 }
 
-fn text_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+fn text_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
   text_frame(input, data_size_v23)
 }
 
-fn text_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+fn text_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
   text_frame(input, data_size_v24)
 }
 
-fn text_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
+fn text_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
   let (input, (pid, id, size, flags)) =
     tuple((
       one_of("GT"),
@@ -110,18 +110,18 @@ fn text_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IRes
   let (_data, text) = encoded_string(encoding, data)?;
   let merged = format!("{}{}", pid, id);
   debug!("utf8v23 {} {} {}", merged, size, text);
-  Ok((input, Frames::Text { id: merged, size, flags, text }))
+  Ok((input, Frame::Text { id: merged, size, flags, text }))
 }
 
-fn comment_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+fn comment_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
   comment_frame(input, data_size_v23)
 }
 
-fn comment_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+fn comment_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
   comment_frame(input, data_size_v24)
 }
 
-fn comment_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
+fn comment_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
   let (input, (_id, size, flags, encoding, language)) =
     tuple((
       tag(COMMENT_TAG),
@@ -136,34 +136,34 @@ fn comment_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> I
   let (input, data) = take(size - 4)(input)?;
   let (_data, (description, value)) = encoded_string_pair(encoding, data)?;
   debug!("comment {} {} {} {}", size, language, description, value);
-  Ok((input, Frames::Comment { id: COMMENT_TAG.to_string(), size, flags, language: language.to_string(), description, value }))
+  Ok((input, Frame::Comment { id: COMMENT_TAG.to_string(), size, flags, language: language.to_string(), description, value }))
 }
 
-fn generic_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+fn generic_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
   generic_frame(input, data_size_v23)
 }
 
-fn generic_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+fn generic_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
   generic_frame(input, data_size_v24)
 }
 
-fn generic_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
+fn generic_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
   let (input, (id, size, flags)) =
     tuple((id_as_str, data_size, be_u16))(input)?;
   debug!("frame {} {}", id, size);
   let (input, data) = take(size)(input)?;
-  Ok((input, Frames::Frame { id: id.to_string(), size, flags, data: data.into() }))
+  Ok((input, Frame::Generic { id: id.to_string(), size, flags, data: data.into() }))
 }
 
-fn object_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+fn object_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
   object_frame(input, data_size_v23)
 }
 
-fn object_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+fn object_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
   object_frame(input, data_size_v24)
 }
 
-fn object_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
+fn object_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
   let (input, (id, size, flags)) = tuple((tag(OBJECT_TAG), data_size, be_u16))(input)?;
   let id = from_utf8(id).unwrap().to_string();
   debug!("object {:?} {}",  id, size);
@@ -174,18 +174,18 @@ fn object_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IR
   let remaining = size - (offset - input.len()) as u32;
   debug!("mime {}, filename {}, size {}, description {}", mime_type, filename, remaining, description);
   let (input, data) = take(remaining)(input)?;
-  Ok((input, Frames::Object { id, size, flags, mime_type, filename, description, data: data.into() }))
+  Ok((input, Frame::Object { id, size, flags, mime_type, filename, description, data: data.into() }))
 }
 
-fn picture_frame_v23(input: &[u8]) -> IResult<&[u8], Frames> {
+fn picture_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
   picture_frame(input, data_size_v23)
 }
 
-fn picture_frame_v24(input: &[u8]) -> IResult<&[u8], Frames> {
+fn picture_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
   picture_frame(input, data_size_v24)
 }
 
-fn picture_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frames> {
+fn picture_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
   let (input, (id, size, flags)) = tuple((tag(PICTURE_TAG), data_size, be_u16))(input)?;
   let id = from_utf8(id).unwrap().to_string();
   debug!("picture {:?} {}",  id, size);
@@ -197,7 +197,7 @@ fn picture_frame(input: &[u8], data_size: fn(&[u8]) -> IResult<&[u8], u32>) -> I
   let remaining = size - (start - input.len()) as u32;
   debug!("mime {}, size {}, description {}", mime_type, remaining, description);
   let (input, data) = take(remaining)(input)?;
-  Ok((input, Frames::Picture { id, size, flags, mime_type, kind, description, data: data.into() }))
+  Ok((input, Frame::Picture { id, size, flags, mime_type, kind, description, data: data.into() }))
 }
 
 fn terminated_utf8(input: &[u8]) -> IResult<&[u8], String> {
@@ -223,11 +223,11 @@ pub fn file_header(input: &[u8]) -> IResult<&[u8], Header> {
   Ok((input, Header { version, revision, flags, tag_size }))
 }
 
-fn padding(input: &[u8]) -> IResult<&[u8], Frames> {
+fn padding(input: &[u8]) -> IResult<&[u8], Frame> {
   let (input, pad) =
     many_till(tag(b"\x00"), eof)
       (input)?;
-  Ok((input, Frames::Padding { size: pad.0.len() as u32 }))
+  Ok((input, Frame::Padding { size: pad.0.len() as u32 }))
 }
 
 pub fn as_syncsafe(total: u32) -> Vec<u8> {
@@ -284,19 +284,19 @@ mod tests {
 
     let data = "Hello, world".as_bytes().to_vec();
     let (input, frame) = object_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Object { id: OBJECT_TAG.to_string(), size: 80, flags: 0, mime_type: "application/vnd.rekordbox.dat".to_string(), filename: "ANLZ0000.DAT".to_string(), description: "Rekordbox Analysis Data".to_string(), data: data });
+    assert_eq!(frame, Frame::Object { id: OBJECT_TAG.to_string(), size: 80, flags: 0, mime_type: "application/vnd.rekordbox.dat".to_string(), filename: "ANLZ0000.DAT".to_string(), description: "Rekordbox Analysis Data".to_string(), data: data });
 
     let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::ExtendedText { id: EXTENDED_TAG.to_string(), size: 12, flags: 0, description: "Hello".to_string(), value: "World".to_string() });
+    assert_eq!(frame, Frame::ExtendedText { id: EXTENDED_TAG.to_string(), size: 12, flags: 0, description: "Hello".to_string(), value: "World".to_string() });
 
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: TITLE_TAG.to_string(), size: 5, flags: 0, text: "Tink".to_string() });
+    assert_eq!(frame, Frame::Text { id: TITLE_TAG.to_string(), size: 5, flags: 0, text: "Tink".to_string() });
 
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: ARTIST_TAG.to_string(), size: 6, flags: 0, text: "Apple".to_string() });
+    assert_eq!(frame, Frame::Text { id: ARTIST_TAG.to_string(), size: 6, flags: 0, text: "Apple".to_string() });
 
     let (input, frame) = generic_frame_v24(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, ..} => {
+    assert_matches!(frame, Frame::Generic{ id, ..} => {
       assert_eq!(id, COMMENT_TAG.to_string());
       // TODO: compare actual picture
       // if let Frames::Frame { id, size, flags, data } = frame {
@@ -306,28 +306,28 @@ mod tests {
     });
 
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: GENRE_TAG.to_string(), size: 7, flags: 0, text: "sounds".to_string() });
+    assert_eq!(frame, Frame::Text { id: GENRE_TAG.to_string(), size: 7, flags: 0, text: "sounds".to_string() });
 
     let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::ExtendedText { id: EXTENDED_TAG.to_string(), size: 23, flags: 0, description: "こんにちは".to_string(), value: "世界".to_string() });
+    assert_eq!(frame, Frame::ExtendedText { id: EXTENDED_TAG.to_string(), size: 23, flags: 0, description: "こんにちは".to_string(), value: "世界".to_string() });
 
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: KEY_TAG.to_string(), size: 3, flags: 0, text: "4A".to_string() });
+    assert_eq!(frame, Frame::Text { id: KEY_TAG.to_string(), size: 3, flags: 0, text: "4A".to_string() });
 
     let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::ExtendedText { id: EXTENDED_TAG.to_string(), size: 14, flags: 0, description: "EnergyLevel".to_string(), value: "6".to_string() });
+    assert_eq!(frame, Frame::ExtendedText { id: EXTENDED_TAG.to_string(), size: 14, flags: 0, description: "EnergyLevel".to_string(), value: "6".to_string() });
 
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Text { id: SUBTITLE_TAG.to_string(), size: 1, flags: 0, text: "".to_string() });
+    assert_eq!(frame, Frame::Text { id: SUBTITLE_TAG.to_string(), size: 1, flags: 0, text: "".to_string() });
 
     let (input, frame) = generic_frame_v24(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, ..} => {
+    assert_matches!(frame, Frame::Generic{ id, ..} => {
       assert_eq!(id, GROUPING_TAG.to_string());
       // let str = encoded_string(data);
     });
 
     let (_input, frame) = padding(&input).ok().unwrap();
-    assert_eq!(frame, Frames::Padding { size: 831 });
+    assert_eq!(frame, Frame::Padding { size: 831 });
   }
 
   fn filenames(base: &str) -> (String, String, String) {

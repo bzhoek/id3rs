@@ -31,8 +31,8 @@ pub struct Header {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Frames {
-  Frame {
+pub enum Frame {
+  Generic {
     id: String,
     size: u32,
     flags: u16,
@@ -86,7 +86,7 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + S
 
 pub struct ID3Tag {
   pub filepath: String,
-  pub frames: Vec<Frames>,
+  pub frames: Vec<Frame>,
   pub dirty: bool,
 }
 
@@ -151,10 +151,10 @@ impl ID3Tag {
     Ok(())
   }
 
-  fn write_id3_frames(frames: &Vec<Frames>, out: &mut File) -> Result<()> {
+  fn write_id3_frames(frames: &Vec<Frame>, out: &mut File) -> Result<()> {
     for frame in frames.iter() {
       match frame {
-        Frames::Frame { id, size, flags, data } => {
+        Frame::Generic { id, size, flags, data } => {
           out.write(id.as_ref())?;
           let vec = as_syncsafe(*size);
           debug!("frame {} len {}", id, size);
@@ -162,7 +162,7 @@ impl ID3Tag {
           out.write(&flags.to_be_bytes())?;
           out.write(&data)?;
         }
-        Frames::Text { id, size: _, flags, text } => {
+        Frame::Text { id, size: _, flags, text } => {
           let text: Vec<u8> = text.encode_utf16().map(|w| w.to_le_bytes()).flatten().collect();
           let len = text.len() as u32 + 3;
           let size = as_syncsafe(len);
@@ -174,7 +174,7 @@ impl ID3Tag {
           out.write(b"\x01\xff\xfe")?;
           out.write(&*text)?;
         }
-        Frames::Comment { id, size: _, flags, language, description, value } => {
+        Frame::Comment { id, size: _, flags, language, description, value } => {
           let len = language.len() + description.len() + value.len() + 2;
           let size = as_syncsafe(len as u32);
           debug!("comment {} len {}", id, len);
@@ -188,7 +188,7 @@ impl ID3Tag {
           out.write(b"\x00")?;
           out.write(value.as_bytes())?;
         }
-        Frames::ExtendedText { id, size: _, flags, description, value } => {
+        Frame::ExtendedText { id, size: _, flags, description, value } => {
           let len = description.len() + value.len() + 2;
           let size = as_syncsafe(len as u32);
           debug!("extended {} len {}", id, len);
@@ -201,7 +201,7 @@ impl ID3Tag {
           out.write(b"\x00")?;
           out.write(value.as_bytes())?;
         }
-        Frames::Object { id, flags, mime_type, filename, description, data, .. } => {
+        Frame::Object { id, flags, mime_type, filename, description, data, .. } => {
           let len = mime_type.len() + filename.len() + description.len() + 4 + data.len();
           let size = as_syncsafe(len as u32);
           debug!("object {} len {}", id, len);
@@ -218,7 +218,7 @@ impl ID3Tag {
           out.write(b"\x00")?;
           out.write(data)?;
         }
-        Frames::Picture { id, flags, kind, mime_type, description, data, .. } => {
+        Frame::Picture { id, flags, kind, mime_type, description, data, .. } => {
           let len = mime_type.len() + description.len() + 4 + data.len();
           let size = as_syncsafe(len as u32);
           debug!("picture {} len {}", id, len);
@@ -242,55 +242,55 @@ impl ID3Tag {
 
   pub fn text(&self, identifier: &str) -> Option<&str> {
     self.frames.iter().find(|f| match f {
-      Frames::Text { id, .. } => id == identifier,
+      Frame::Text { id, .. } => id == identifier,
       _ => false
     }).map(|f| match f {
-      Frames::Text { text, .. } => Some(text.as_str()),
+      Frame::Text { text, .. } => Some(text.as_str()),
       _ => None
     }).flatten()
   }
 
   pub fn comment(&self) -> Option<&str> {
     self.frames.iter().find(|f| match f {
-      Frames::Comment { id, .. } => id == COMMENT_TAG,
+      Frame::Comment { id, .. } => id == COMMENT_TAG,
       _ => false
     }).map(|f| match f {
-      Frames::Comment { value, .. } => Some(value.as_str()),
+      Frame::Comment { value, .. } => Some(value.as_str()),
       _ => None
     }).flatten()
   }
 
-  pub fn objects(&self, identifier: &str) -> Vec<&Frames> {
+  pub fn objects(&self, identifier: &str) -> Vec<&Frame> {
     self.frames.iter().filter(|f| match f {
-      Frames::Object { id, .. } => id == identifier,
+      Frame::Object { id, .. } => id == identifier,
       _ => false
     }).collect()
   }
 
-  pub fn object_by_filename(&self, name: &str) -> Option<&Frames> {
+  pub fn object_by_filename(&self, name: &str) -> Option<&Frame> {
     self.frames.iter().find(|f| match f {
-      Frames::Object { id, filename, .. } => id == OBJECT_TAG && filename == name,
+      Frame::Object { id, filename, .. } => id == OBJECT_TAG && filename == name,
       _ => false
     })
   }
 
   pub fn extended_text(&self, name: &str) -> Option<&str> {
     self.extended_text_frame(name).map(|f| match f {
-      Frames::ExtendedText { value, .. } => Some(value.as_str()),
+      Frame::ExtendedText { value, .. } => Some(value.as_str()),
       _ => None
     }).flatten()
   }
 
-  pub fn extended_text_frame(&self, name: &str) -> Option<&Frames> {
+  pub fn extended_text_frame(&self, name: &str) -> Option<&Frame> {
     self.frames.iter().find(|f| match f {
-      Frames::ExtendedText { description, .. } => description == name,
+      Frame::ExtendedText { description, .. } => description == name,
       _ => false
     })
   }
 
-  pub fn attached_picture(&self, kind: u8) -> Option<&Frames> {
+  pub fn attached_picture(&self, kind: u8) -> Option<&Frame> {
     self.frames.iter().find(|f| match f {
-      Frames::Picture { kind: kind_, .. } => &kind == kind_,
+      Frame::Picture { kind: kind_, .. } => &kind == kind_,
       _ => false
     })
   }
@@ -328,12 +328,12 @@ impl ID3Tag {
   pub fn set_object(&mut self, name: &str, mime_type: &str, description: &str, data: &[u8]) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
-        Frames::Object { id, filename, .. } => id == OBJECT_TAG && filename == name,
+        Frame::Object { id, filename, .. } => id == OBJECT_TAG && filename == name,
         _ => false
       }) {
       self.frames.remove(index);
     }
-    self.push_new_frame(Frames::Object {
+    self.push_new_frame(Frame::Object {
       id: OBJECT_TAG.to_string(),
       size: 0,
       flags: 0,
@@ -347,15 +347,15 @@ impl ID3Tag {
   fn set_text(&mut self, id3: &str, change: &str) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
-        Frames::Text { id, .. } => id == id3,
+        Frame::Text { id, .. } => id == id3,
         _ => false
       }) {
       self.frames.remove(index);
     }
-    self.push_new_frame(Frames::Text { id: id3.to_string(), size: 0, flags: 0, text: change.to_string() });
+    self.push_new_frame(Frame::Text { id: id3.to_string(), size: 0, flags: 0, text: change.to_string() });
   }
 
-  fn push_new_frame(&mut self, frames: Frames) {
+  fn push_new_frame(&mut self, frames: Frame) {
     self.frames.push(frames);
     self.dirty = true
   }
@@ -363,12 +363,12 @@ impl ID3Tag {
   pub fn set_comment(&mut self, description: &str, value: &str) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
-        Frames::Comment { .. } => true,
+        Frame::Comment { .. } => true,
         _ => false
       }) {
       self.frames.remove(index);
     }
-    self.push_new_frame(Frames::Comment {
+    self.push_new_frame(Frame::Comment {
       id: COMMENT_TAG.to_string(),
       size: 0,
       flags: 0,
@@ -381,23 +381,23 @@ impl ID3Tag {
   pub fn set_extended_text(&mut self, name: &str, value: &str) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
-        Frames::ExtendedText { description, .. } => description == name,
+        Frame::ExtendedText { description, .. } => description == name,
         _ => false
       }) {
       self.frames.remove(index);
     }
-    self.push_new_frame(Frames::ExtendedText { id: EXTENDED_TAG.to_string(), size: 0, flags: 0, description: name.to_string(), value: value.to_string() });
+    self.push_new_frame(Frame::ExtendedText { id: EXTENDED_TAG.to_string(), size: 0, flags: 0, description: name.to_string(), value: value.to_string() });
   }
 
   pub fn set_attached_picture(&mut self, kind: u8, mime_type: &str, description: &str, data: &[u8]) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
-        Frames::Picture { kind: kind_, .. } => kind_ == &kind,
+        Frame::Picture { kind: kind_, .. } => kind_ == &kind,
         _ => false
       }) {
       self.frames.remove(index);
     }
-    self.push_new_frame(Frames::Picture { id: PICTURE_TAG.to_string(), size: 0, flags: 0, kind, mime_type: mime_type.to_string(), description: description.to_string(), data: Vec::from(data) });
+    self.push_new_frame(Frame::Picture { id: PICTURE_TAG.to_string(), size: 0, flags: 0, kind, mime_type: mime_type.to_string(), description: description.to_string(), data: Vec::from(data) });
   }
 }
 
@@ -453,7 +453,7 @@ mod tests {
       let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3Tag::read(&rofile).unwrap();
       let data = "Hello, world".as_bytes().to_vec();
-      assert_eq!(tag.objects(OBJECT_TAG), vec![&Frames::Object {
+      assert_eq!(tag.objects(OBJECT_TAG), vec![&Frame::Object {
         id: OBJECT_TAG.to_string(),
         size: 80,
         flags: 0,
@@ -471,7 +471,7 @@ mod tests {
       let tag = ID3Tag::read(&rofile).unwrap();
       let data = "Hello, world".as_bytes().to_vec();
       let option = tag.object_by_filename("ANLZ0000.DAT");
-      assert_eq!(option, Some(&Frames::Object {
+      assert_eq!(option, Some(&Frame::Object {
         id: OBJECT_TAG.to_string(),
         size: 80,
         flags: 0,
@@ -487,7 +487,7 @@ mod tests {
       log_init();
       let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3Tag::read(&rofile).unwrap();
-      assert_eq!(tag.extended_text_frame("Hello"), Some(&Frames::ExtendedText {
+      assert_eq!(tag.extended_text_frame("Hello"), Some(&Frame::ExtendedText {
         id: EXTENDED_TAG.to_string(),
         size: 12,
         flags: 0,
@@ -501,7 +501,7 @@ mod tests {
       log_init();
       let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3Tag::read(&rofile).unwrap();
-      assert_eq!(tag.extended_text_frame("こんにちは"), Some(&Frames::ExtendedText {
+      assert_eq!(tag.extended_text_frame("こんにちは"), Some(&Frame::ExtendedText {
         id: EXTENDED_TAG.to_string(),
         size: 21,
         flags: 0,
@@ -569,7 +569,7 @@ mod tests {
 
         let tag = ID3Tag::read(&rwfile).unwrap();
         let picture = tag.attached_picture(3);
-        assert!(matches!(picture, Some(Frames::Picture { data, .. })));
+        assert!(matches!(picture, Some(Frame::Picture { data, .. })));
       });
     }
 
@@ -692,26 +692,26 @@ mod tests {
     let tag = ID3Tag::read(&rofile).unwrap();
     let sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
-        Frames::Frame { size, .. } => 10 + size,
-        Frames::Text { size, .. } => 10 + size,
-        Frames::Comment { size, .. } => 10 + size,
-        Frames::ExtendedText { size, .. } => 10 + size,
-        Frames::Object { size, .. } => 10 + size,
-        Frames::Padding { size } => 0 + size,
-        Frames::Picture { size, .. } => 10 + size,
+        Frame::Generic { size, .. } => 10 + size,
+        Frame::Text { size, .. } => 10 + size,
+        Frame::Comment { size, .. } => 10 + size,
+        Frame::ExtendedText { size, .. } => 10 + size,
+        Frame::Object { size, .. } => 10 + size,
+        Frame::Padding { size } => 0 + size,
+        Frame::Picture { size, .. } => 10 + size,
       });
 
     assert_eq!(sum, 1114);
 
     let _sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
-        Frames::Frame { size, .. } => 10 + size,
-        Frames::Text { text, .. } => 10 + 1 + text.len() as u32,
-        Frames::Comment { size, .. } => 10 + size,
-        Frames::ExtendedText { size, .. } => 10 + size,
-        Frames::Object { size, .. } => 10 + size,
-        Frames::Padding { size } => 0 + size,
-        Frames::Picture { size, .. } => 10 + size,
+        Frame::Generic { size, .. } => 10 + size,
+        Frame::Text { text, .. } => 10 + 1 + text.len() as u32,
+        Frame::Comment { size, .. } => 10 + size,
+        Frame::ExtendedText { size, .. } => 10 + size,
+        Frame::Object { size, .. } => 10 + size,
+        Frame::Padding { size } => 0 + size,
+        Frame::Picture { size, .. } => 10 + size,
       });
 
     let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67

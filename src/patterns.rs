@@ -11,7 +11,7 @@ use nom::number::complete::be_u32;
 use nom::number::streaming::{be_u16, be_u8, le_u16, le_u8};
 use nom::sequence::{pair, tuple};
 
-use crate::{COMMENT_TAG, EXTENDED_TAG, Frames, OBJECT_TAG, Header};
+use crate::{COMMENT_TAG, EXTENDED_TAG, Frames, Header, OBJECT_TAG};
 
 fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
   map(
@@ -21,7 +21,7 @@ fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
 }
 
 fn data_size_v24(input: &[u8]) -> IResult<&[u8], u32> {
-  fold_many_m_n(4, 4, be_u8, 0u32,
+  fold_many_m_n(4, 4, be_u8, || 0u32,
     |acc, byte| acc << 7 | (byte as u32))(input)
 }
 
@@ -284,7 +284,7 @@ mod tests {
     assert_eq!(frame, Frames::Text { id: SUBTITLE_TAG.to_string(), size: 1, flags: 0, text: "".to_string() });
 
     let (input, frame) = generic_frame_v24(&input).ok().unwrap();
-    assert_matches!(frame, Frames::Frame{ id, data, ..} => {
+    assert_matches!(frame, Frames::Frame{ id, ..} => {
       assert_eq!(id, GROUPING_TAG.to_string());
       // let str = encoded_string(data);
     });

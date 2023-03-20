@@ -2,15 +2,15 @@
 name = "id3rs"
 version = "0.1.0"
 authors = ["Bas van der Hoek <bas@hoek.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-nom = "6.0"
+nom = "7"
 
 log = "0.4"
 env_logger = "0.8"
 
-clap = "2.33"
+clap = "2"
 
 tempfile = "3.2"
 

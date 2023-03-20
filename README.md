@@ -3,6 +3,7 @@
 Alternative for [rust-id3](https://github.com/polyfloyd/rust-id3) which does not read all frames consistently, particularly the Mixed in Key `EnergyLevel` field.
 
 - [ ] https://mutagen-specs.readthedocs.io/en/latest/id3/id3v2.4.0-frames.html#general-encapsulated-object
+- [ ] Ondersteuning voor images
 
 application/vnd.rekordbox.dat
 
@@ -19,6 +20,7 @@ ID3 v2.3 is UTF-16, v2.4 heeft ook UTF-8, maar oude hardware verwacht soms ID3v2
 * [Internal structure](https://www.the-roberts-family.net/metadata/mp3.html)
 * [MP3](http://www.datavoyage.com/mpgscript/mpeghdr.htm)
 * https://en.wikipedia.org/wiki/MP3#/media/File:Mp3filestructure.svg
+* https://docs.mp3tag.de/mapping/
 
 Voor MP3 audio frames gewoon op zoek gaan naar 0xFFFE
 

@@ -563,7 +563,7 @@ mod tests {
     pub fn test_attach_picture() {
       rw_test(FILENAME, |(rofile, _, rwfile)| {
         let mut tag = ID3rs::read(&rwfile).unwrap();
-        let data = fs::read("cover.jpg").unwrap();
+        let data = fs::read("samples/cover.jpg").unwrap();
         tag.set_attached_picture(03, "image/png", "cover", &*data);
         tag.write(&rwfile).unwrap();
 

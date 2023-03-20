@@ -3,7 +3,7 @@ use env_logger::Env;
 use env_logger::Target::Stdout;
 use log::debug;
 
-use id3rs::ID3Tag;
+use id3rs::ID3rs;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -19,7 +19,7 @@ fn main() -> Result<()> {
   configure_logging(&args);
 
   if let Some(file) = args.get_one::<String>("FILE") {
-    ID3Tag::read(file)?;
+    ID3rs::read(file)?;
   };
 
   Ok(())

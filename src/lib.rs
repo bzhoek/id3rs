@@ -84,7 +84,7 @@ pub enum Frame {
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
-pub struct ID3Tag {
+pub struct ID3rs {
   pub filepath: String,
   pub frames: Vec<Frame>,
   pub dirty: bool,
@@ -92,8 +92,8 @@ pub struct ID3Tag {
 
 const ID3HEADER_SIZE: u64 = 10;
 
-impl ID3Tag {
-  pub fn read(path: impl AsRef<Path> + Copy) -> Result<ID3Tag> {
+impl ID3rs {
+  pub fn read(path: impl AsRef<Path> + Copy) -> Result<ID3rs> {
     let (mut file, header) = Self::read_header(path)?;
     let mut input = vec![0u8; header.tag_size as usize];
     file.read_exact(&mut input).unwrap();
@@ -104,7 +104,7 @@ impl ID3Tag {
       v => Err(format!("Invalid version: {}", v))?
     };
 
-    Ok(ID3Tag { filepath: path.as_ref().to_str().unwrap().to_string(), frames: result, dirty: false })
+    Ok(ID3rs { filepath: path.as_ref().to_str().unwrap().to_string(), frames: result, dirty: false })
   }
 
   fn read_header(path: impl AsRef<Path>) -> Result<(File, Header)> {
@@ -131,7 +131,7 @@ impl ID3Tag {
 
     out.write(b"ID3\x04\x00\x00FAKE")?;
 
-    ID3Tag::write_id3_frames(&self.frames, &mut out)?;
+    ID3rs::write_id3_frames(&self.frames, &mut out)?;
 
     let size = out.stream_position()? - ID3HEADER_SIZE;
     debug!("new tag size {}", size);
@@ -439,7 +439,7 @@ mod tests {
     pub fn test_reading() {
       log_init();
       let (rofile, _, _) = filenames(FILENAME);
-      let tag = ID3Tag::read(&rofile).unwrap();
+      let tag = ID3rs::read(&rofile).unwrap();
 
       assert_eq!(tag.text(TITLE_TAG), Some("Tink"));
       assert_eq!(tag.title(), Some("Tink"));
@@ -451,7 +451,7 @@ mod tests {
     pub fn test_all_geobs() {
       log_init();
       let (rofile, _, _) = filenames(FILENAME);
-      let tag = ID3Tag::read(&rofile).unwrap();
+      let tag = ID3rs::read(&rofile).unwrap();
       let data = "Hello, world".as_bytes().to_vec();
       assert_eq!(tag.objects(OBJECT_TAG), vec![&Frame::Object {
         id: OBJECT_TAG.to_string(),
@@ -468,7 +468,7 @@ mod tests {
     pub fn test_find_geob() {
       log_init();
       let (rofile, _, _) = filenames(FILENAME);
-      let tag = ID3Tag::read(&rofile).unwrap();
+      let tag = ID3rs::read(&rofile).unwrap();
       let data = "Hello, world".as_bytes().to_vec();
       let option = tag.object_by_filename("ANLZ0000.DAT");
       assert_eq!(option, Some(&Frame::Object {
@@ -486,7 +486,7 @@ mod tests {
     pub fn test_extended_text_8859() {
       log_init();
       let (rofile, _, _) = filenames(FILENAME);
-      let tag = ID3Tag::read(&rofile).unwrap();
+      let tag = ID3rs::read(&rofile).unwrap();
       assert_eq!(tag.extended_text_frame("Hello"), Some(&Frame::ExtendedText {
         id: EXTENDED_TAG.to_string(),
         size: 12,
@@ -500,7 +500,7 @@ mod tests {
     pub fn test_extended_text_utf16() {
       log_init();
       let (rofile, _, _) = filenames(FILENAME);
-      let tag = ID3Tag::read(&rofile).unwrap();
+      let tag = ID3rs::read(&rofile).unwrap();
       assert_eq!(tag.extended_text_frame("こんにちは"), Some(&Frame::ExtendedText {
         id: EXTENDED_TAG.to_string(),
         size: 21,
@@ -515,7 +515,7 @@ mod tests {
   #[test]
   pub fn test_invalid_version() {
     let (rofile, _, _) = filenames("samples/5eep");
-    let result = ID3Tag::read(&rofile).err().unwrap().to_string();
+    let result = ID3rs::read(&rofile).err().unwrap().to_string();
     assert_eq!(result, "Invalid version: 5".to_string());
   }
 
@@ -536,7 +536,7 @@ mod tests {
     #[test]
     pub fn test_set_object() {
       rw_test(FILENAME, |(_, _, rwfile)| {
-        let mut tag = ID3Tag::read(&rwfile).unwrap();
+        let mut tag = ID3rs::read(&rwfile).unwrap();
 
         tag.set_object("HELLO.TXT", "text/plain", "Hello", &"Hello, world".as_bytes());
         tag.set_extended_text("EnergyLevel", "99");
@@ -547,12 +547,12 @@ mod tests {
     #[test]
     pub fn test_change_extended_text() {
       rw_test(FILENAME, |(rofile, _, rwfile)| {
-        let mut tag = ID3Tag::read(&rwfile).unwrap();
+        let mut tag = ID3rs::read(&rwfile).unwrap();
         tag.set_extended_text("OriginalTitle", &tag.title().unwrap().to_string());
         tag.set_extended_text("EnergyLevel", "99");
         tag.write(&rwfile).unwrap();
 
-        let tag = ID3Tag::read(&rwfile).unwrap();
+        let tag = ID3rs::read(&rwfile).unwrap();
         assert_eq!(tag.extended_text("OriginalTitle"), Some("Tink"));
         assert_eq!(tag.extended_text("EnergyLevel"), Some("99"));
         assert_eq!(mpck(&rofile), mpck(&rwfile));
@@ -562,12 +562,12 @@ mod tests {
     #[test]
     pub fn test_attach_picture() {
       rw_test(FILENAME, |(rofile, _, rwfile)| {
-        let mut tag = ID3Tag::read(&rwfile).unwrap();
+        let mut tag = ID3rs::read(&rwfile).unwrap();
         let data = fs::read("cover.jpg").unwrap();
         tag.set_attached_picture(03, "image/png", "cover", &*data);
         tag.write(&rwfile).unwrap();
 
-        let tag = ID3Tag::read(&rwfile).unwrap();
+        let tag = ID3rs::read(&rwfile).unwrap();
         let picture = tag.attached_picture(3);
         assert!(matches!(picture, Some(Frame::Picture { data, .. })));
       });
@@ -577,7 +577,7 @@ mod tests {
     pub fn test_utf8_energy_level() {
       log_init();
       let (rofile, _, _) = filenames(FILENAME);
-      let tag = ID3Tag::read(&rofile).unwrap();
+      let tag = ID3rs::read(&rofile).unwrap();
       assert_eq!(tag.extended_text("Hello"), Some("World"));
     }
 
@@ -585,7 +585,7 @@ mod tests {
     pub fn test_reading() {
       log_init();
       let (rofile, _, _) = filenames("samples/4tink");
-      let tag = ID3Tag::read(&rofile).unwrap();
+      let tag = ID3rs::read(&rofile).unwrap();
 
       assert_eq!(tag.text(TITLE_TAG), Some("Tink"));
       assert_eq!(tag.extended_text("EnergyLevel"), Some("6"));
@@ -603,7 +603,7 @@ mod tests {
   pub fn test_reading_genre() {
     log_init();
     let (rofile, _, _) = filenames("samples/4tink");
-    let tag = ID3Tag::read(&rofile).unwrap();
+    let tag = ID3rs::read(&rofile).unwrap();
 
     assert_eq!(tag.text(GENRE_TAG), Some("sounds"));
     assert_eq!(tag.genre(), Some("sounds"));
@@ -612,13 +612,13 @@ mod tests {
   #[test]
   pub fn test_changing_genre() {
     rw_test("samples/4tink", |(rofile, _, rwfile)| {
-      let mut tag = ID3Tag::read(&rwfile).unwrap();
+      let mut tag = ID3rs::read(&rwfile).unwrap();
       assert_eq!(tag.text(GENRE_TAG), Some("sounds"));
       assert_eq!(tag.genre(), Some("sounds"));
       tag.set_genre("notech");
       tag.write(&rwfile).unwrap();
 
-      let tag = ID3Tag::read(&rwfile).unwrap();
+      let tag = ID3rs::read(&rwfile).unwrap();
       assert_eq!(tag.genre(), Some("notech"));
       assert_eq!(mpck(&rofile), mpck(&rwfile));
     });
@@ -629,7 +629,7 @@ mod tests {
     log_init();
     let (rofile, _, _) = filenames("samples/4tink");
 
-    let tag = ID3Tag::read(&rofile).unwrap();
+    let tag = ID3rs::read(&rofile).unwrap();
     assert_eq!(tag.frames.len(), 12);
     assert_eq!(tag.extended_text("OriginalTitle"), None);
   }
@@ -637,7 +637,7 @@ mod tests {
   #[test]
   pub fn test_change_comment() {
     rw_test("samples/4tink", |(rofile, outfile, _)| {
-      let mut tag = ID3Tag::read(&rofile).unwrap();
+      let mut tag = ID3rs::read(&rofile).unwrap();
       tag.set_comment("", "New comment");
       tag.write(&outfile).unwrap();
       assert_eq!(mpck(&rofile), mpck(&outfile));
@@ -647,7 +647,7 @@ mod tests {
   #[test]
   pub fn test_change_copy() {
     rw_test("samples/4tink", |(rofile, outfile, _)| {
-      let mut tag = ID3Tag::read(&rofile).unwrap();
+      let mut tag = ID3rs::read(&rofile).unwrap();
       tag.set_title("Bleek");
       tag.set_extended_text("EnergyLevel", "99");
       tag.write(&outfile).unwrap();
@@ -658,7 +658,7 @@ mod tests {
   #[test]
   pub fn test_change_inplace() {
     rw_test("samples/4tink", |(rofile, _, rwfile)| {
-      let mut tag = ID3Tag::read(&rwfile).unwrap();
+      let mut tag = ID3rs::read(&rwfile).unwrap();
       tag.set_title("Bleek");
       tag.set_extended_text("EnergyLevel", "99");
       tag.write(&rwfile).unwrap();
@@ -689,7 +689,7 @@ mod tests {
     log_init();
     let (rofile, _, _) = filenames("samples/4tink");
 
-    let tag = ID3Tag::read(&rofile).unwrap();
+    let tag = ID3rs::read(&rofile).unwrap();
     let sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
         Frame::Generic { size, .. } => 10 + size,

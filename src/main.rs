@@ -1,4 +1,4 @@
-use clap::{Arg, ArgMatches, Command};
+use clap::{Arg, ArgAction, ArgMatches, Command};
 use env_logger::Env;
 use env_logger::Target::Stdout;
 use log::debug;
@@ -25,15 +25,16 @@ fn main() -> Result<()> {
   Ok(())
 }
 
-pub fn debug_arg() -> Arg<'static> {
+pub fn debug_arg() -> Arg {
   Arg::new("DEBUG")
     .help("Show debug logging")
     .short('d')
     .long("debug")
+    .action(ArgAction::SetTrue)
 }
 
 pub fn configure_logging(args: &ArgMatches) {
-  let filter = if args.is_present("DEBUG") { "debug,html5ever=info" } else { "info" };
+  let filter = if args.get_flag("DEBUG") { "debug,html5ever=info" } else { "info" };
   env_logger::Builder::from_env(Env::default().default_filter_or(filter)).target(Stdout).init();
   debug!("Debug logging");
 }

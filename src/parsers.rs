@@ -57,15 +57,15 @@ pub fn all_frames_v24(input: &[u8]) -> IResult<&[u8], Vec<Frame>> {
     |(frames, _)| frames)(input)
 }
 
-fn extended_text_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
+pub fn extended_text_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
   extended_text_frame(input, len_v23)
 }
 
-fn extended_text_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
+pub fn extended_text_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
   extended_text_frame(input, len_v24)
 }
 
-fn extended_text_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
+pub fn extended_text_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
   let (input, (id, size, flags)) = tuple((tag(EXTENDED_TAG), len, be_u16))(input)?;
   let id = from_utf8(id).unwrap().to_string();
   debug!("extended {}", id);
@@ -89,15 +89,15 @@ fn encoded_string(encoding: u8, data: &[u8]) -> IResult<&[u8], String> {
   }
 }
 
-fn text_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
+pub fn text_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
   text_frame(input, len_v23)
 }
 
-fn text_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
+pub fn text_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
   text_frame(input, len_v24)
 }
 
-fn text_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
+pub fn text_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
   let (input, (pid, id, size, flags)) =
     tuple((
       one_of("GT"),
@@ -139,15 +139,15 @@ fn comment_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult
   Ok((input, Frame::Comment { id: COMMENT_TAG.to_string(), size, flags, language: language.to_string(), description, value }))
 }
 
-fn generic_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
+pub fn generic_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
   generic_frame(input, len_v23)
 }
 
-fn generic_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
+pub fn generic_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
   generic_frame(input, len_v24)
 }
 
-fn generic_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
+pub fn generic_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
   let (input, (id, size, flags)) =
     tuple((id_as_str, len, be_u16))(input)?;
   debug!("frame {} {}", id, size);
@@ -155,15 +155,15 @@ fn generic_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult
   Ok((input, Frame::Generic { id: id.to_string(), size, flags, data: data.into() }))
 }
 
-fn object_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
+pub fn object_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
   object_frame(input, len_v23)
 }
 
-fn object_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
+pub fn object_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
   object_frame(input, len_v24)
 }
 
-fn object_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
+pub fn object_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
   let (input, (id, size, flags)) = tuple((tag(OBJECT_TAG), len, be_u16))(input)?;
   let id = from_utf8(id).unwrap().to_string();
   debug!("object {:?} {}",  id, size);
@@ -223,7 +223,7 @@ pub fn file_header(input: &[u8]) -> IResult<&[u8], Header> {
   Ok((input, Header { version, revision, flags, tag_size }))
 }
 
-fn padding(input: &[u8]) -> IResult<&[u8], Frame> {
+pub fn padding(input: &[u8]) -> IResult<&[u8], Frame> {
   let (input, pad) =
     many_till(tag(b"\x00"), eof)
       (input)?;
@@ -238,99 +238,4 @@ pub fn as_syncsafe(total: u32) -> Vec<u8> {
     remaining = remaining >> 7;
   }
   result
-}
-
-#[cfg(test)]
-mod tests {
-  use std::io::Read;
-
-  use assert_matches::assert_matches;
-
-  use crate::{ARTIST_TAG, GENRE_TAG, GROUPING_TAG, KEY_TAG, log_init, SUBTITLE_TAG, TITLE_TAG};
-
-  use super::*;
-
-  #[test]
-  fn test_header_and_frames() {
-    let (rofile, _, _) = filenames("samples/4tink");
-    let mut file = std::fs::File::open(&rofile).unwrap();
-    let mut buffer = [0; 10];
-    file.read_exact(&mut buffer).unwrap();
-
-    let (_, header) = file_header(&buffer).ok().unwrap();
-    assert_eq!(header, Header { version: 4, revision: 0, flags: 0, tag_size: 1114 });
-
-    let mut input = vec![0u8; header.tag_size as usize];
-    file.read_exact(&mut input).unwrap();
-
-    let (_, result) = all_frames_v24(&input).ok().unwrap();
-    assert_eq!(12, result.len());
-  }
-
-  #[test]
-  fn test_frames_individually() {
-    log_init();
-
-    let (rofile, _, _) = filenames("samples/4tink");
-    let mut file = std::fs::File::open(&rofile).unwrap();
-    let mut buffer = [0; 10];
-    file.read_exact(&mut buffer).unwrap();
-
-    let (_, header) = file_header(&buffer).ok().unwrap();
-    assert_eq!(header, Header { version: 4, revision: 0, flags: 0, tag_size: 1114 });
-
-    let mut input = vec![0u8; header.tag_size as usize];
-    file.read_exact(&mut input).unwrap();
-
-    let data = "Hello, world".as_bytes().to_vec();
-    let (input, frame) = object_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frame::Object { id: OBJECT_TAG.to_string(), size: 80, flags: 0, mime_type: "application/vnd.rekordbox.dat".to_string(), filename: "ANLZ0000.DAT".to_string(), description: "Rekordbox Analysis Data".to_string(), data });
-
-    let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frame::ExtendedText { id: EXTENDED_TAG.to_string(), size: 12, flags: 0, description: "Hello".to_string(), value: "World".to_string() });
-
-    let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frame::Text { id: TITLE_TAG.to_string(), size: 5, flags: 0, text: "Tink".to_string() });
-
-    let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frame::Text { id: ARTIST_TAG.to_string(), size: 6, flags: 0, text: "Apple".to_string() });
-
-    let (input, frame) = generic_frame_v24(&input).ok().unwrap();
-    assert_matches!(frame, Frame::Generic{ id, ..} => {
-      assert_eq!(id, COMMENT_TAG.to_string());
-      // TODO: compare actual picture
-      // if let Frames::Frame { id, size, flags, data } = frame {
-      //   let mut out = File::create("APIC.bin").unwrap();
-      //   out.write(data).unwrap();
-      // }
-    });
-
-    let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frame::Text { id: GENRE_TAG.to_string(), size: 7, flags: 0, text: "sounds".to_string() });
-
-    let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frame::ExtendedText { id: EXTENDED_TAG.to_string(), size: 23, flags: 0, description: "こんにちは".to_string(), value: "世界".to_string() });
-
-    let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frame::Text { id: KEY_TAG.to_string(), size: 3, flags: 0, text: "4A".to_string() });
-
-    let (input, frame) = extended_text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frame::ExtendedText { id: EXTENDED_TAG.to_string(), size: 14, flags: 0, description: "EnergyLevel".to_string(), value: "6".to_string() });
-
-    let (input, frame) = text_frame_v24(&input).ok().unwrap();
-    assert_eq!(frame, Frame::Text { id: SUBTITLE_TAG.to_string(), size: 1, flags: 0, text: "".to_string() });
-
-    let (input, frame) = generic_frame_v24(&input).ok().unwrap();
-    assert_matches!(frame, Frame::Generic{ id, ..} => {
-      assert_eq!(id, GROUPING_TAG.to_string());
-      // let str = encoded_string(data);
-    });
-
-    let (_input, frame) = padding(&input).ok().unwrap();
-    assert_eq!(frame, Frame::Padding { size: 831 });
-  }
-
-  fn filenames(base: &str) -> (String, String, String) {
-    (format!("{}.mp3", base), format!("{}-out.mp3", base), format!("{}-rw.mp3", base))
-  }
 }

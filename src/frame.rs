@@ -4,7 +4,7 @@ use nom::bits::streaming::tag;
 use nom::bytes::streaming::take_until;
 
 #[derive(Debug, PartialEq)]
-enum Version {
+pub enum Version {
   Version25,
   Version2,
   Version1,
@@ -23,7 +23,7 @@ impl From<u8> for Version {
 }
 
 #[derive(Debug, PartialEq)]
-enum Layer {
+pub enum Layer {
   Layer1,
   Layer2,
   Layer3,
@@ -61,7 +61,7 @@ fn bitrate_to_kbps(bitrate: u8) -> u32 {
 }
 
 #[derive(Debug, PartialEq)]
-enum Protection {
+pub enum Protection {
   Crc,
   Unprotected,
 }
@@ -77,10 +77,10 @@ impl From<u8> for Protection {
 
 #[derive(Debug, PartialEq)]
 pub struct FrameHeader {
-  version: Version,
-  layer: Layer,
-  crc: Protection,
-  bitrate: u32,
+  pub version: Version,
+  pub layer: Layer,
+  pub crc: Protection,
+  pub bitrate: u32,
 }
 
 fn frame_header_layer(i: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8, u8)> {
@@ -110,7 +110,7 @@ fn frame_header_mode(i: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8, u8, 
 
 // http://id3lib.sourceforge.net/id3/mp3frame.html and http://www.mp3-tech.org/programmer/frame_header.html
 #[allow(dead_code, unused)]
-fn frame_header(input: &[u8]) -> IResult<&[u8], FrameHeader> {
+pub fn frame_header(input: &[u8]) -> IResult<&[u8], FrameHeader> {
   let (input, _) = take_until(b"\xff".as_bytes())(input)?;
   let (input, _) = nom::bytes::streaming::take(1u32)(input)?;
   let (input, (version, layer, crc)) = bits(frame_header_layer)(input)?;
@@ -126,26 +126,7 @@ fn frame_header(input: &[u8]) -> IResult<&[u8], FrameHeader> {
     version: Version::from(version),
     layer: Layer::from(layer),
     crc: Protection::from(crc),
-    bitrate: bitrate_to_kbps(bitrate)
+    bitrate: bitrate_to_kbps(bitrate),
   };
   Ok((input, frame))
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn find_frame_header() {
-    let buffer = include_bytes!("../samples/4tink.mp3");
-    let (position, frame) = frame_header(&buffer[1114..]).ok().unwrap();
-    assert_eq!(buffer.len() - position.len(), 1128);
-    println!("{:?}", frame);
-    assert_eq!(frame, FrameHeader {
-      version: Version::Version1,
-      layer: Layer::Layer3,
-      crc: Protection::Unprotected,
-      bitrate: 160
-    });
-  }
 }

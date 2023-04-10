@@ -20,12 +20,12 @@ fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
   )(input)
 }
 
-fn len_v24(input: &[u8]) -> IResult<&[u8], u32> {
+fn safe_u32(input: &[u8]) -> IResult<&[u8], u32> {
   fold_many_m_n(4, 4, be_u8, || 0u32,
     |acc, byte| acc << 7 | (byte as u32))(input)
 }
 
-fn len_v23(input: &[u8]) -> IResult<&[u8], u32> {
+fn len_u32(input: &[u8]) -> IResult<&[u8], u32> {
   be_u32(input)
 }
 
@@ -58,11 +58,11 @@ pub fn all_frames_v24(input: &[u8]) -> IResult<&[u8], Vec<Frame>> {
 }
 
 pub fn extended_text_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
-  extended_text_frame(input, len_v23)
+  extended_text_frame(input, len_u32)
 }
 
 pub fn extended_text_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
-  extended_text_frame(input, len_v24)
+  extended_text_frame(input, safe_u32)
 }
 
 pub fn extended_text_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
@@ -90,11 +90,11 @@ fn encoded_string(encoding: u8, data: &[u8]) -> IResult<&[u8], String> {
 }
 
 pub fn text_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
-  text_frame(input, len_v23)
+  text_frame(input, len_u32)
 }
 
 pub fn text_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
-  text_frame(input, len_v24)
+  text_frame(input, safe_u32)
 }
 
 pub fn text_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
@@ -114,11 +114,11 @@ pub fn text_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResul
 }
 
 pub fn comment_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
-  comment_frame(input, len_v23)
+  comment_frame(input, len_u32)
 }
 
 pub fn comment_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
-  comment_frame(input, len_v24)
+  comment_frame(input, safe_u32)
 }
 
 pub fn comment_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
@@ -140,11 +140,11 @@ pub fn comment_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IRe
 }
 
 pub fn generic_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
-  generic_frame(input, len_v23)
+  generic_frame(input, len_u32)
 }
 
 pub fn generic_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
-  generic_frame(input, len_v24)
+  generic_frame(input, safe_u32)
 }
 
 pub fn generic_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
@@ -156,11 +156,11 @@ pub fn generic_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IRe
 }
 
 pub fn object_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
-  object_frame(input, len_v23)
+  object_frame(input, len_u32)
 }
 
 pub fn object_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
-  object_frame(input, len_v24)
+  object_frame(input, safe_u32)
 }
 
 pub fn object_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
@@ -178,11 +178,11 @@ pub fn object_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IRes
 }
 
 fn picture_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
-  picture_frame(input, len_v23)
+  picture_frame(input, len_u32)
 }
 
 fn picture_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
-  picture_frame(input, len_v24)
+  picture_frame(input, safe_u32)
 }
 
 fn picture_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
@@ -195,8 +195,8 @@ fn picture_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult
   let (input, kind) = be_u8(input)?;
   let (input, description) = encoded_string(encoding, input)?;
   let remaining = size - (start - input.len()) as u32;
-  debug!("mime {}, size {}, description {}", mime_type, remaining, description);
   let (input, data) = take(remaining)(input)?;
+  debug!("mime {}, size {}, description {}", mime_type, remaining, description);
   Ok((input, Frame::Picture { id, size, flags, mime_type, kind, description, data: data.into() }))
 }
 
@@ -218,7 +218,7 @@ fn terminated_utf16(input: &[u8]) -> IResult<&[u8], String> {
 
 pub fn file_header(input: &[u8]) -> IResult<&[u8], Header> {
   let (input, (_, version, revision, flags, tag_size))
-    = tuple((tag("ID3"), be_u8, be_u8, be_u8, len_v24))(input)?;
+    = tuple((tag("ID3"), be_u8, be_u8, be_u8, safe_u32))(input)?;
   debug!("ID3 {} tag size {}", version, tag_size);
   Ok((input, Header { version, revision, flags, tag_size }))
 }

@@ -14,7 +14,7 @@ ID3 v2.3 is UTF-16, v2.4 heeft ook UTF-8, maar oude hardware verwacht soms ID3v2
 
 > [Unsynchronization](https://hydrogenaud.io/index.php?topic=67145.msg602042#msg602042) can only be applied to the entire tag in 2.3, whereas you can apply it to individual frames in 2.4. This means that in 2.3, the tag size field is stored as syncsafe, while the frame sizes aren't. In 2.4 all sizes are stored as syncsafe.
 
-* [ID3 tag version 2.3.0](https://id3.org/id3v2.3.0)
+* [ID3 tag version 2.3.0](https://mutagen-specs.readthedocs.io/en/latest/id3/id3v2.3.0.html)
 * [ID3 tag version 2.4.0](https://mutagen-specs.readthedocs.io/en/latest/id3/id3v2.4.0-structure.html)
 * [Internal structure](https://www.the-roberts-family.net/metadata/mp3.html)
 * [MP3](http://www.datavoyage.com/mpgscript/mpeghdr.htm)

@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     pub fn test_attach_picture() {
-      rw_test(FILENAME, |(rofile, _, rwfile)| {
+      rw_test(FILENAME, |(_, _, rwfile)| {
         let mut tag = ID3rs::read(&rwfile).unwrap();
         let cover = fs::read("samples/cover.jpg").unwrap();
         tag.set_attached_picture(03, "image/jpg", "cover", &*cover);
@@ -183,6 +183,7 @@ mod tests {
 
     #[test]
     pub fn test_attached_picture() {
+      log_init();
       let tag = ID3rs::read("samples/3tank.mp3").unwrap();
       let bzhoek = fs::read("samples/bzhoek.png").unwrap();
       let picture = tag.attached_picture(3).unwrap();

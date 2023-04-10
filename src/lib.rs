@@ -4,7 +4,7 @@ use std::path::Path;
 
 use log::{debug, LevelFilter};
 
-use crate::parsers::{all_frames_v23, all_frames_v24, as_syncsafe, file_header};
+use crate::parsers::{all_frames, as_syncsafe, file_header, v23_len, v24_len};
 
 pub static TITLE_TAG: &str = "TIT2";
 pub static SUBTITLE_TAG: &str = "TIT3";
@@ -97,8 +97,8 @@ impl ID3rs {
     file.read_exact(&mut input).unwrap();
 
     let (_, result) = match header.version {
-      3 => all_frames_v23(&input).map_err(|_| "Frames error")?,
-      4 => all_frames_v24(&input).map_err(|_| "Frames error")?,
+      3 => all_frames(v23_len)(&input).map_err(|_| "Frames error")?,
+      4 => all_frames(v24_len)(&input).map_err(|_| "Frames error")?,
       v => Err(format!("Invalid version: {}", v))?
     };
 

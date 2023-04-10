@@ -170,7 +170,7 @@ mod tests {
       rw_test(FILENAME, |(rofile, _, rwfile)| {
         let mut tag = ID3rs::read(&rwfile).unwrap();
         let cover = fs::read("samples/cover.jpg").unwrap();
-        tag.set_attached_picture(03, "image/png", "cover", &*cover);
+        tag.set_attached_picture(03, "image/jpg", "cover", &*cover);
         tag.write(&rwfile).unwrap();
 
         let tag = ID3rs::read(&rwfile).unwrap();

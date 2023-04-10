@@ -5,7 +5,7 @@ mod tests {
   use assert_matches::assert_matches;
 
   use id3rs::*;
-  use id3rs::parsers::{all_frames_v24, extended_text_frame_v24, file_header, generic_frame_v24, object_frame_v24, padding, text_frame_v24};
+  use id3rs::parsers::{all_frames_v24, comment_frame_v24, extended_text_frame_v24, file_header, generic_frame_v24, object_frame_v24, padding, text_frame_v24};
 
   #[test]
   fn test_header_and_frames() {
@@ -52,14 +52,10 @@ mod tests {
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
     assert_eq!(frame, Frame::Text { id: ARTIST_TAG.to_string(), size: 6, flags: 0, text: "Apple".to_string() });
 
-    let (input, frame) = generic_frame_v24(&input).ok().unwrap();
-    assert_matches!(frame, Frame::Generic{ id, ..} => {
-      assert_eq!(id, COMMENT_TAG.to_string());
-      // TODO: compare actual picture
-      // if let Frames::Frame { id, size, flags, data } = frame {
-      //   let mut out = File::create("APIC.bin").unwrap();
-      //   out.write(data).unwrap();
-      // }
+    let (input, frame) = comment_frame_v24(&input).ok().unwrap();
+    assert_matches!(frame, Frame::Comment{ id, value, ..} => {
+      assert_eq!(id, COMMENT_TAG);
+      assert_eq!(value, "From Big Sur");
     });
 
     let (input, frame) = text_frame_v24(&input).ok().unwrap();
@@ -79,8 +75,7 @@ mod tests {
 
     let (input, frame) = generic_frame_v24(&input).ok().unwrap();
     assert_matches!(frame, Frame::Generic{ id, ..} => {
-      assert_eq!(id, GROUPING_TAG.to_string());
-      // let str = encoded_string(data);
+      assert_eq!(id, GROUPING_TAG);
     });
 
     let (_input, frame) = padding(&input).ok().unwrap();

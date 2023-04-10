@@ -113,15 +113,15 @@ pub fn text_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResul
   Ok((input, Frame::Text { id: merged, size, flags, text }))
 }
 
-fn comment_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
+pub fn comment_frame_v23(input: &[u8]) -> IResult<&[u8], Frame> {
   comment_frame(input, len_v23)
 }
 
-fn comment_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
+pub fn comment_frame_v24(input: &[u8]) -> IResult<&[u8], Frame> {
   comment_frame(input, len_v24)
 }
 
-fn comment_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
+pub fn comment_frame(input: &[u8], len: fn(&[u8]) -> IResult<&[u8], u32>) -> IResult<&[u8], Frame> {
   let (input, (_id, size, flags, encoding, language)) =
     tuple((
       tag(COMMENT_TAG),

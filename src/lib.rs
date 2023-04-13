@@ -94,23 +94,28 @@ const ID3HEADER_SIZE: u64 = 10;
 impl ID3rs {
   pub fn read(path: impl AsRef<Path> + Copy) -> Result<ID3rs> {
     let (mut file, header) = Self::read_header(path)?;
-    let mut input = vec![0u8; header.tag_size as usize];
-    file.read_exact(&mut input).unwrap();
+    match header {
+      Some(header) => {
+        let mut input = vec![0u8; header.tag_size as usize];
+        file.read_exact(&mut input).unwrap();
 
-    let (_, result) = match header.version {
-      3 => all_frames(v23_len)(&input).map_err(|_| "Frames error")?,
-      4 => all_frames(v24_len)(&input).map_err(|_| "Frames error")?,
-      v => Err(format!("Invalid version: {}", v))?
-    };
+        let (_, result) = match header.version {
+          3 => all_frames(v23_len)(&input).map_err(|_| "Frames error")?,
+          4 => all_frames(v24_len)(&input).map_err(|_| "Frames error")?,
+          v => Err(format!("Invalid version: {}", v))?
+        };
 
-    Ok(ID3rs { filepath: path.as_ref().to_str().unwrap().to_string(), frames: result, dirty: false })
+        Ok(ID3rs { filepath: path.as_ref().to_str().unwrap().to_string(), frames: result, dirty: false })
+      }
+      None => Ok(ID3rs { filepath: path.as_ref().to_str().unwrap().to_string(), frames: vec![], dirty: false })
+    }
   }
 
-  fn read_header(path: impl AsRef<Path>) -> Result<(File, Header)> {
+  fn read_header(path: impl AsRef<Path>) -> Result<(File, Option<Header>)> {
     let mut file = File::open(path)?;
     let mut buffer = [0; 10];
     file.read_exact(&mut buffer).unwrap();
-    let (_, header) = file_header(&buffer).map_err(|_| "Header error")?;
+    let header = file_header(&buffer).ok().map(|(_, header)| header);
     Ok((file, header))
   }
 
@@ -121,7 +126,9 @@ impl ID3rs {
 
     let target = target.as_ref().to_str().unwrap().to_string();
     let mut out = if self.filepath == target {
-      file.seek(SeekFrom::Start(ID3HEADER_SIZE + header.tag_size as u64))?; // skip header and tag
+      if let Some(header) = &header {
+        file.seek(SeekFrom::Start(ID3HEADER_SIZE + header.tag_size as u64))?; // skip header and tag
+      }
       std::io::copy(&mut file, &mut tmp)?;
       OpenOptions::new().write(true).truncate(true).open(&self.filepath)?
     } else {
@@ -143,7 +150,10 @@ impl ID3rs {
       tmp.seek(SeekFrom::Start(0))?;
       std::io::copy(&mut tmp, &mut out)?;
     } else {
-      file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
+      if let Some(header) = header {
+        file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
+      }
+
       std::io::copy(&mut file, &mut out)?;
     };
 
@@ -269,6 +279,13 @@ impl ID3rs {
   pub fn object_by_filename(&self, name: &str) -> Option<&Frame> {
     self.frames.iter().find(|f| match f {
       Frame::Object { id, filename, .. } => id == OBJECT_TAG && filename == name,
+      _ => false
+    })
+  }
+
+  pub fn object_by_description(&self, text: &str) -> Option<&Frame> {
+    self.frames.iter().find(|f| match f {
+      Frame::Object { id, description, .. } => id == OBJECT_TAG && description == text,
       _ => false
     })
   }

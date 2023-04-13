@@ -8,6 +8,7 @@ use crate::parsers::{all_frames, as_syncsafe, file_header, v23_len, v24_len};
 
 pub static TITLE_TAG: &str = "TIT2";
 pub static SUBTITLE_TAG: &str = "TIT3";
+pub static ALBUM_TAG: &str = "TALB";
 pub static ARTIST_TAG: &str = "TPE1";
 pub static GENRE_TAG: &str = "TCON";
 pub static KEY_TAG: &str = "TKEY";
@@ -301,6 +302,10 @@ impl ID3rs {
     self.text(SUBTITLE_TAG)
   }
 
+  pub fn album(&self) -> Option<&str> {
+    self.text(ARTIST_TAG)
+  }
+
   pub fn artist(&self) -> Option<&str> {
     self.text(ARTIST_TAG)
   }
@@ -315,6 +320,18 @@ impl ID3rs {
 
   pub fn set_title(&mut self, text: &str) {
     self.set_text(TITLE_TAG, text);
+  }
+
+  pub fn set_album(&mut self, text: &str) {
+    self.set_text(ALBUM_TAG, text);
+  }
+
+  pub fn set_artist(&mut self, text: &str) {
+    self.set_text(ARTIST_TAG, text);
+  }
+
+  pub fn set_subtitle(&mut self, text: &str) {
+    self.set_text(SUBTITLE_TAG, text);
   }
 
   pub fn set_key(&mut self, text: &str) { self.set_text(KEY_TAG, text); }

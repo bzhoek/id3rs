@@ -33,6 +33,11 @@ mod tests {
   use super::*;
 
   mod v23 {
+    use std::process::exit;
+    use std::str::from_utf8;
+
+    use log::info;
+
     use id3rs::{EXTENDED_TAG, Frame, ID3rs, log_init, OBJECT_TAG, TITLE_TAG};
 
     use super::*;
@@ -66,6 +71,21 @@ mod tests {
         description: "Rekordbox Analysis Data".to_string(),
         data,
       }]);
+    }
+
+    #[test]
+    pub fn test_cue_points() {
+      log_init();
+      let tag = ID3rs::read("/Users/bas/bzhoek/happer/tests/0. Psycho Killer -- Talking Heads [5093662].mp3").unwrap();
+      let data = tag.object_by_description("CuePoints").and_then(|f| match f {
+        Frame::Object { data, .. } => Some(data),
+        _ => None
+      });
+
+
+      let result = data.map(|data| from_utf8(&data).ok()).flatten()
+        .map(|str| str.replace('\n', ""));
+      assert_eq!(result, Some("eyJhbGdvcml0aG0iOjE0LCJjdWVzIjpbeyJuYW1lIjoiQ3VlIDEiLCJ0aW1lIjo0LjQyNDg1NzU4NTM0MTYxNDZ9LHsibmFtZSI6IkN1ZSAyIiwidGltZSI6MTU1MzguODk5OTc5OTQyNzc3fSx7Im5hbWUiOiJDdWUgMyIsInRpbWUiOjQ2NjA3Ljg1MDIyNDY1NzY0Nn0seyJuYW1lIjoiQ3VlIDQiLCJ0aW1lIjo2MjE0Mi4zMjUzNDcwMTUwODF9LHsibmFtZSI6IkN1ZSA1IiwidGltZSI6MTU1MzQ5LjE3NjA4MTE1ODY5fSx7Im5hbWUiOiJDdWUgNiIsInRpbWUiOjE3MDg4My42NTEyMDM1MTU5NH0seyJuYW1lIjoiQ3VlIDciLCJ0aW1lIjoyMDE5NTIuNjAxNDQ4MjMwNTN9LHsibmFtZSI6IkN1ZSA4IiwidGltZSI6MjE3NDg3LjA3NjU3MDU4Nzc5fV0sInNvdXJjZSI6Im1peGVkaW5rZXkifQ==".to_string()))
     }
 
     #[test]

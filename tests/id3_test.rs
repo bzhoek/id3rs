@@ -3,22 +3,6 @@ use std::process::Command;
 
 use id3rs::Result;
 
-fn make_rwcopy(rofile: &str, rwfile: &str) -> Result<()> {
-  fs::copy(&rofile, &rwfile)?;
-  let mut perms = fs::metadata(&rwfile)?.permissions();
-  perms.set_readonly(false);
-  fs::set_permissions(&rwfile, perms)?;
-  Ok(())
-}
-
-fn mpck(filepath: &str) -> String {
-  let output = Command::new("mpck")
-    .arg(filepath)
-    .output()
-    .expect("failed to execute process");
-
-  String::from_utf8(output.stdout).unwrap().replace(filepath, "")
-}
 
 #[cfg(test)]
 mod tests {
@@ -27,7 +11,7 @@ mod tests {
 
   use assert_matches::assert_matches;
 
-  use id3rs::{Frame, GENRE_TAG, ID3rs, log_init};
+  use id3rs::{Frame, GENRE_TAG, ID3rs, log_init, make_rwcopy, mpck};
   use id3rs::parsers::as_syncsafe;
 
   use super::*;
@@ -43,6 +27,19 @@ mod tests {
     use super::*;
 
     const FILENAME: &str = "samples/3tink";
+
+    #[test]
+    pub fn test_adding() {
+      log_init();
+      let file = "/Users/bas/Downloads/1. Nova -- Tale Of Us [508821602]".to_string();
+      rw_test(&file, |(_, _, rwfile)| {
+        let mut tag = ID3rs::read(&rwfile).unwrap();
+        tag.set_title("Hello");
+        tag.set_artist("World");
+        tag.write(rwfile).unwrap();
+        exit(0);
+      });
+    }
 
     #[test]
     pub fn test_reading() {
@@ -153,7 +150,7 @@ mod tests {
   }
 
   mod v24 {
-    use id3rs::{PICTURE_TAG, TITLE_TAG};
+    use id3rs::{mpck, PICTURE_TAG, TITLE_TAG};
 
     use super::*;
 

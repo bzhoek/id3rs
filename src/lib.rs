@@ -98,7 +98,7 @@ pub enum Picture {
   BackCover = 4,
 }
 
-const ID3HEADER_SIZE: u64 = 10;
+pub const ID3HEADER_SIZE: usize = 10;
 
 impl ID3rs {
   pub fn read(path: impl AsRef<Path> + Copy) -> Result<ID3rs> {
@@ -122,7 +122,7 @@ impl ID3rs {
 
   fn read_header(path: impl AsRef<Path>) -> Result<(File, Option<Header>)> {
     let mut file = File::open(path)?;
-    let mut buffer = [0; 10];
+    let mut buffer = [0; ID3HEADER_SIZE];
     file.read_exact(&mut buffer).unwrap();
     let header = file_header(&buffer).ok().map(|(_, header)| header);
     Ok((file, header))
@@ -136,7 +136,7 @@ impl ID3rs {
     let target = target.as_ref().to_str().unwrap().to_string();
     let mut out = if self.filepath == target {
       if let Some(header) = &header {
-        file.seek(SeekFrom::Start(ID3HEADER_SIZE + header.tag_size as u64))?; // skip header and tag
+        file.seek(SeekFrom::Start(ID3HEADER_SIZE as u64 + header.tag_size as u64))?; // skip header and tag
       }
       std::io::copy(&mut file, &mut tmp)?;
       OpenOptions::new().write(true).truncate(true).open(&self.filepath)?
@@ -148,19 +148,19 @@ impl ID3rs {
 
     ID3rs::write_id3_frames(&self.frames, &mut out)?;
 
-    let size = out.stream_position()? - ID3HEADER_SIZE;
+    let size = out.stream_position()? - ID3HEADER_SIZE as u64;
     debug!("new tag size {}", size);
     let vec = as_syncsafe(size as u32);
     out.seek(SeekFrom::Start(6))?;
     out.write(&*vec)?;
-    out.seek(SeekFrom::Start(ID3HEADER_SIZE + size))?;
+    out.seek(SeekFrom::Start(ID3HEADER_SIZE as u64 + size as u64))?;
 
     if self.filepath == target {
       tmp.seek(SeekFrom::Start(0))?;
       std::io::copy(&mut tmp, &mut out)?;
     } else {
       if let Some(header) = header {
-        file.seek(SeekFrom::Start(10 + header.tag_size as u64))?;
+        file.seek(SeekFrom::Start(ID3HEADER_SIZE as u64 + header.tag_size as u64))?;
       }
 
       std::io::copy(&mut file, &mut out)?;

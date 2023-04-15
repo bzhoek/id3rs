@@ -1,3 +1,5 @@
+pub const ID3FRAME_SIZE: u32 = 10;
+
 #[cfg(test)]
 mod tests {
   use std::convert::TryInto;
@@ -7,6 +9,7 @@ mod tests {
 
   use id3rs::{Frame, GENRE_TAG, ID3rs, log_init, make_rwcopy, mpck};
   use id3rs::parsers::as_syncsafe;
+  use crate::ID3FRAME_SIZE;
 
   mod v23 {
     use std::process::exit;
@@ -321,26 +324,26 @@ mod tests {
     let tag = ID3rs::read(&rofile).unwrap();
     let sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
-        Frame::Generic { size, .. } => 10 + size,
-        Frame::Text { size, .. } => 10 + size,
-        Frame::Comment { size, .. } => 10 + size,
-        Frame::ExtendedText { size, .. } => 10 + size,
-        Frame::Object { size, .. } => 10 + size,
+        Frame::Generic { size, .. } => ID3FRAME_SIZE + size,
+        Frame::Text { size, .. } => ID3FRAME_SIZE + size,
+        Frame::Comment { size, .. } => ID3FRAME_SIZE + size,
+        Frame::ExtendedText { size, .. } => ID3FRAME_SIZE + size,
+        Frame::Object { size, .. } => ID3FRAME_SIZE + size,
         Frame::Padding { size } => 0 + size,
-        Frame::Picture { size, .. } => 10 + size,
+        Frame::Picture { size, .. } => ID3FRAME_SIZE + size,
       });
 
     assert_eq!(sum, 1114);
 
     let _sum = tag.frames.iter()
       .fold(0u32, |sum, frame| sum + match frame {
-        Frame::Generic { size, .. } => 10 + size,
-        Frame::Text { text, .. } => 10 + 1 + text.len() as u32,
-        Frame::Comment { size, .. } => 10 + size,
-        Frame::ExtendedText { size, .. } => 10 + size,
-        Frame::Object { size, .. } => 10 + size,
+        Frame::Generic { size, .. } => ID3FRAME_SIZE + size,
+        Frame::Text { text, .. } => ID3FRAME_SIZE + 1 + text.len() as u32,
+        Frame::Comment { size, .. } => ID3FRAME_SIZE + size,
+        Frame::ExtendedText { size, .. } => ID3FRAME_SIZE + size,
+        Frame::Object { size, .. } => ID3FRAME_SIZE + size,
         Frame::Padding { size } => 0 + size,
-        Frame::Picture { size, .. } => 10 + size,
+        Frame::Picture { size, .. } => ID3FRAME_SIZE + size,
       });
 
     let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67

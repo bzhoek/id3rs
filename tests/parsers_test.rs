@@ -11,7 +11,7 @@ mod tests {
   fn test_header_and_frames() {
     let (rofile, _, _) = filenames("samples/4tink");
     let mut file = std::fs::File::open(&rofile).unwrap();
-    let mut buffer = [0; 10];
+    let mut buffer = [0; ID3HEADER_SIZE];
     file.read_exact(&mut buffer).unwrap();
 
     let (_, header) = file_header(&buffer).ok().unwrap();
@@ -30,7 +30,7 @@ mod tests {
 
     let (rofile, _, _) = filenames("samples/4tink");
     let mut file = std::fs::File::open(&rofile).unwrap();
-    let mut buffer = [0; 10];
+    let mut buffer = [0; ID3HEADER_SIZE];
     file.read_exact(&mut buffer).unwrap();
 
     let (_, header) = file_header(&buffer).ok().unwrap();

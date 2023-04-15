@@ -91,6 +91,13 @@ pub struct ID3rs {
   pub dirty: bool,
 }
 
+pub enum Picture {
+  Icon = 1,
+  OtherIcon = 2,
+  FrontCover = 3,
+  BackCover = 4,
+}
+
 const ID3HEADER_SIZE: u64 = 10;
 
 impl ID3rs {
@@ -306,7 +313,8 @@ impl ID3rs {
     })
   }
 
-  pub fn attached_picture(&self, kind: u8) -> Option<&Frame> {
+  pub fn attached_picture(&self, kind: Picture) -> Option<&Frame> {
+    let kind = kind as u8;
     self.frames.iter().find(|f| match f {
       Frame::Picture { kind: kind_, .. } => &kind == kind_,
       _ => false
@@ -423,7 +431,8 @@ impl ID3rs {
     self.push_new_frame(Frame::ExtendedText { id: EXTENDED_TAG.to_string(), size: 0, flags: 0, description: name.to_string(), value: value.to_string() });
   }
 
-  pub fn set_attached_picture(&mut self, kind: u8, mime_type: &str, description: &str, data: &[u8]) {
+  pub fn set_attached_picture(&mut self, kind: Picture, mime_type: &str, description: &str, data: &[u8]) {
+    let kind = kind as u8;
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
         Frame::Picture { kind: kind_, .. } => kind_ == &kind,

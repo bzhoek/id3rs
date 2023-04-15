@@ -1,9 +1,3 @@
-use std::fs;
-use std::process::Command;
-
-use id3rs::Result;
-
-
 #[cfg(test)]
 mod tests {
   use std::convert::TryInto;
@@ -14,13 +8,9 @@ mod tests {
   use id3rs::{Frame, GENRE_TAG, ID3rs, log_init, make_rwcopy, mpck};
   use id3rs::parsers::as_syncsafe;
 
-  use super::*;
-
   mod v23 {
     use std::process::exit;
     use std::str::from_utf8;
-
-    use log::info;
 
     use id3rs::{EXTENDED_TAG, Frame, ID3rs, log_init, OBJECT_TAG, TITLE_TAG};
 
@@ -150,7 +140,7 @@ mod tests {
   }
 
   mod v24 {
-    use id3rs::{mpck, PICTURE_TAG, TITLE_TAG};
+    use id3rs::{mpck, Picture, PICTURE_TAG, TITLE_TAG};
 
     use super::*;
 
@@ -187,11 +177,11 @@ mod tests {
       rw_test(FILENAME, |(_, _, rwfile)| {
         let mut tag = ID3rs::read(&rwfile).unwrap();
         let cover = fs::read("samples/cover.jpg").unwrap();
-        tag.set_attached_picture(03, "image/jpg", "cover", &*cover);
+        tag.set_attached_picture(Picture::FrontCover, "image/jpg", "cover", &*cover);
         tag.write(&rwfile).unwrap();
 
         let tag = ID3rs::read(&rwfile).unwrap();
-        let picture = tag.attached_picture(3).unwrap();
+        let picture = tag.attached_picture(Picture::FrontCover).unwrap();
         assert_matches!(picture, Frame::Picture { data, .. } => {
           assert_eq!(cover.len(), data.len());
         });
@@ -203,7 +193,7 @@ mod tests {
       log_init();
       let tag = ID3rs::read("samples/3tank.mp3").unwrap();
       let bzhoek = fs::read("samples/bzhoek.png").unwrap();
-      let picture = tag.attached_picture(3).unwrap();
+      let picture = tag.attached_picture(Picture::FrontCover).unwrap();
       assert_matches!(picture, Frame::Picture { id, data, mime_type, .. } => {
         assert_eq!(id, PICTURE_TAG);
         assert_eq!(mime_type, "image/png");

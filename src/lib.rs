@@ -145,7 +145,7 @@ impl ID3rs {
       File::create(&target)?
     };
 
-    out.write(b"ID3\x04\x00\x00FAKE")?;
+    out.write_all(b"ID3\x04\x00\x00FAKE")?;
 
     ID3rs::write_id3_frames(&self.frames, &mut out)?;
 
@@ -153,8 +153,8 @@ impl ID3rs {
     debug!("new tag size {}", size);
     let vec = as_syncsafe(size as u32);
     out.seek(SeekFrom::Start(6))?;
-    out.write(&*vec)?;
-    out.seek(SeekFrom::Start(ID3HEADER_SIZE as u64 + size as u64))?;
+    out.write_all(&vec)?;
+    out.seek(SeekFrom::Start(ID3HEADER_SIZE as u64 + size))?;
 
     if overwrite {
       tmp.seek(SeekFrom::Start(0))?;
@@ -170,88 +170,88 @@ impl ID3rs {
     Ok(())
   }
 
-  fn write_id3_frames(frames: &Vec<Frame>, out: &mut File) -> Result<()> {
+  fn write_id3_frames(frames: &[Frame], out: &mut File) -> Result<()> {
     for frame in frames.iter() {
       match frame {
         Frame::Generic { id, size, flags, data } => {
-          out.write(id.as_ref())?;
+          out.write_all(id.as_ref())?;
           let vec = as_syncsafe(*size);
           debug!("frame {} len {}", id, size);
-          out.write(&*vec)?;
-          out.write(&flags.to_be_bytes())?;
-          out.write(&data)?;
+          out.write_all(&vec)?;
+          out.write_all(&flags.to_be_bytes())?;
+          out.write_all(data)?;
         }
         Frame::Text { id, size: _, flags, text } => {
-          let text: Vec<u8> = text.encode_utf16().map(|w| w.to_le_bytes()).flatten().collect();
+          let text: Vec<u8> = text.encode_utf16().flat_map(|w| w.to_le_bytes()).collect();
           let len = text.len() as u32 + 3;
           let size = as_syncsafe(len);
           debug!("text {} len {}", id, len);
-          out.write(id.as_ref())?;
-          out.write(&*size)?;
-          out.write(&flags.to_be_bytes())?;
+          out.write_all(id.as_ref())?;
+          out.write_all(&size)?;
+          out.write_all(&flags.to_be_bytes())?;
 
-          out.write(b"\x01\xff\xfe")?;
-          out.write(&*text)?;
+          out.write_all(b"\x01\xff\xfe")?;
+          out.write_all(&text)?;
         }
         Frame::Comment { id, size: _, flags, language, description, value } => {
           let len = language.len() + description.len() + value.len() + 2;
           let size = as_syncsafe(len as u32);
           debug!("comment {} len {}", id, len);
-          out.write(id.as_ref())?;
-          out.write(&*size)?;
-          out.write(&flags.to_be_bytes())?;
+          out.write_all(id.as_ref())?;
+          out.write_all(&size)?;
+          out.write_all(&flags.to_be_bytes())?;
 
-          out.write(b"\x03")?;
-          out.write(language.as_bytes())?;
-          out.write(description.as_bytes())?;
-          out.write(b"\x00")?;
-          out.write(value.as_bytes())?;
+          out.write_all(b"\x03")?;
+          out.write_all(language.as_bytes())?;
+          out.write_all(description.as_bytes())?;
+          out.write_all(b"\x00")?;
+          out.write_all(value.as_bytes())?;
         }
         Frame::ExtendedText { id, size: _, flags, description, value } => {
           let len = description.len() + value.len() + 2;
           let size = as_syncsafe(len as u32);
           debug!("extended {} len {}", id, len);
-          out.write(id.as_ref())?;
-          out.write(&*size)?;
-          out.write(&flags.to_be_bytes())?;
+          out.write_all(id.as_ref())?;
+          out.write_all(&size)?;
+          out.write_all(&flags.to_be_bytes())?;
 
-          out.write(b"\x03")?;
-          out.write(description.as_bytes())?;
-          out.write(b"\x00")?;
-          out.write(value.as_bytes())?;
+          out.write_all(b"\x03")?;
+          out.write_all(description.as_bytes())?;
+          out.write_all(b"\x00")?;
+          out.write_all(value.as_bytes())?;
         }
         Frame::Object { id, flags, mime_type, filename, description, data, .. } => {
           let len = mime_type.len() + filename.len() + description.len() + 4 + data.len();
           let size = as_syncsafe(len as u32);
           debug!("object {} len {}", id, len);
-          out.write(id.as_ref())?;
-          out.write(&*size)?;
-          out.write(&flags.to_be_bytes())?;
+          out.write_all(id.as_ref())?;
+          out.write_all(&size)?;
+          out.write_all(&flags.to_be_bytes())?;
 
-          out.write(b"\x03")?;
-          out.write(mime_type.as_bytes())?;
-          out.write(b"\x00")?;
-          out.write(filename.as_bytes())?;
-          out.write(b"\x00")?;
-          out.write(description.as_bytes())?;
-          out.write(b"\x00")?;
-          out.write(data)?;
+          out.write_all(b"\x03")?;
+          out.write_all(mime_type.as_bytes())?;
+          out.write_all(b"\x00")?;
+          out.write_all(filename.as_bytes())?;
+          out.write_all(b"\x00")?;
+          out.write_all(description.as_bytes())?;
+          out.write_all(b"\x00")?;
+          out.write_all(data)?;
         }
         Frame::Picture { id, flags, kind, mime_type, description, data, .. } => {
           let len = mime_type.len() + description.len() + 4 + data.len();
           let size = as_syncsafe(len as u32);
           debug!("picture {} len {}", id, len);
-          out.write(id.as_ref())?;
-          out.write(&*size)?;
-          out.write(&flags.to_be_bytes())?;
+          out.write_all(id.as_ref())?;
+          out.write_all(&size)?;
+          out.write_all(&flags.to_be_bytes())?;
 
-          out.write(b"\x03")?;
-          out.write(mime_type.as_bytes())?;
-          out.write(b"\x00")?;
-          out.write(&kind.to_be_bytes())?;
-          out.write(description.as_bytes())?;
-          out.write(b"\x00")?;
-          out.write(data)?;
+          out.write_all(b"\x03")?;
+          out.write_all(mime_type.as_bytes())?;
+          out.write_all(b"\x00")?;
+          out.write_all(&kind.to_be_bytes())?;
+          out.write_all(description.as_bytes())?;
+          out.write_all(b"\x00")?;
+          out.write_all(data)?;
         }
         _ => {}
       }
@@ -263,20 +263,20 @@ impl ID3rs {
     self.frames.iter().find(|f| match f {
       Frame::Text { id, .. } => id == identifier,
       _ => false
-    }).map(|f| match f {
+    }).and_then(|f| match f {
       Frame::Text { text, .. } => Some(text.as_str()),
       _ => None
-    }).flatten()
+    })
   }
 
   pub fn comment(&self) -> Option<&str> {
     self.frames.iter().find(|f| match f {
       Frame::Comment { id, .. } => id == COMMENT_TAG,
       _ => false
-    }).map(|f| match f {
+    }).and_then(|f| match f {
       Frame::Comment { value, .. } => Some(value.as_str()),
       _ => None
-    }).flatten()
+    })
   }
 
   pub fn objects(&self, identifier: &str) -> Vec<&Frame> {
@@ -301,10 +301,10 @@ impl ID3rs {
   }
 
   pub fn extended_text(&self, name: &str) -> Option<&str> {
-    self.extended_text_frame(name).map(|f| match f {
+    self.extended_text_frame(name).and_then(|f| match f {
       Frame::ExtendedText { value, .. } => Some(value.as_str()),
       _ => None
-    }).flatten()
+    })
   }
 
   pub fn extended_text_frame(&self, name: &str) -> Option<&Frame> {
@@ -461,9 +461,9 @@ pub fn mpck(filepath: &str) -> String {
 }
 
 pub fn make_rwcopy(rofile: &str, rwfile: &str) -> Result<()> {
-  fs::copy(&rofile, &rwfile)?;
-  let mut perms = fs::metadata(&rwfile)?.permissions();
+  fs::copy(rofile, rwfile)?;
+  let mut perms = fs::metadata(rwfile)?.permissions();
   perms.set_readonly(false);
-  fs::set_permissions(&rwfile, perms)?;
+  fs::set_permissions(rwfile, perms)?;
   Ok(())
 }

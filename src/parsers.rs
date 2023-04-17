@@ -201,7 +201,7 @@ pub fn as_syncsafe(total: u32) -> Vec<u8> {
   let mut remaining = total;
   for _byte in total.to_be_bytes() {
     result.insert(0, (remaining & 0b01111111) as u8);
-    remaining = remaining >> 7;
+    remaining >>= 7;
   }
   result
 }

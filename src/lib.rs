@@ -1,7 +1,7 @@
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use log::{debug, LevelFilter};
@@ -86,7 +86,7 @@ pub enum Frame {
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 pub struct ID3rs {
-  pub filepath: String,
+  pub path: PathBuf,
   pub frames: Vec<Frame>,
   pub dirty: bool,
 }
@@ -101,8 +101,9 @@ pub enum Picture {
 pub const ID3HEADER_SIZE: usize = 10;
 
 impl ID3rs {
-  pub fn read(path: impl AsRef<Path> + Copy) -> Result<ID3rs> {
-    let (mut file, header) = Self::read_header(path)?;
+  pub fn read(path: impl Into<PathBuf>) -> Result<ID3rs> {
+    let path = path.into();
+    let (mut file, header) = Self::read_header(&path)?;
     match header {
       Some(header) => {
         let mut input = vec![0u8; header.tag_size as usize];
@@ -114,9 +115,9 @@ impl ID3rs {
           v => Err(format!("Invalid version: {}", v))?
         };
 
-        Ok(ID3rs { filepath: path.as_ref().to_str().unwrap().to_string(), frames: result, dirty: false })
+        Ok(ID3rs { path, frames: result, dirty: false })
       }
-      None => Ok(ID3rs { filepath: path.as_ref().to_str().unwrap().to_string(), frames: vec![], dirty: false })
+      None => Ok(ID3rs { path, frames: vec![], dirty: false })
     }
   }
 
@@ -129,17 +130,17 @@ impl ID3rs {
   }
 
   pub fn write(&self, target: impl AsRef<Path>) -> Result<()> {
-    let (mut file, header) = Self::read_header(&*self.filepath)?;
+    let (mut file, header) = Self::read_header(&*self.path)?;
 
     let mut tmp: File = tempfile::tempfile()?;
 
-    let target = target.as_ref().to_str().unwrap().to_string();
-    let mut out = if self.filepath == target {
+    let overwrite = <PathBuf as AsRef<Path>>::as_ref(&self.path) == target.as_ref();
+    let mut out = if overwrite {
       if let Some(header) = &header {
         file.seek(SeekFrom::Start(ID3HEADER_SIZE as u64 + header.tag_size as u64))?; // skip header and tag
       }
       std::io::copy(&mut file, &mut tmp)?;
-      OpenOptions::new().write(true).truncate(true).open(&self.filepath)?
+      OpenOptions::new().write(true).truncate(true).open(&self.path)?
     } else {
       File::create(&target)?
     };
@@ -155,7 +156,7 @@ impl ID3rs {
     out.write(&*vec)?;
     out.seek(SeekFrom::Start(ID3HEADER_SIZE as u64 + size as u64))?;
 
-    if self.filepath == target {
+    if overwrite {
       tmp.seek(SeekFrom::Start(0))?;
       std::io::copy(&mut tmp, &mut out)?;
     } else {

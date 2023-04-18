@@ -91,7 +91,9 @@ fn frame_header_layer(i: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8, u8)
   Ok((i, (id, layer, protected)))
 }
 
-fn frame_header_bitrate(i: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8, u8, u8)> {
+type BitrateFlags = (u8, u8, u8, u8);
+
+fn frame_header_bitrate(i: (&[u8], usize)) -> IResult<(&[u8], usize), BitrateFlags> {
   let (i, bitrate) = take(4usize)(i)?;
   let (i, frequency) = take(2usize)(i)?;
   let (i, padding) = take(1usize)(i)?;
@@ -99,7 +101,9 @@ fn frame_header_bitrate(i: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8, u
   Ok((i, (bitrate, frequency, padding, private)))
 }
 
-fn frame_header_mode(i: (&[u8], usize)) -> IResult<(&[u8], usize), (u8, u8, u8, u8, u8)> {
+type ModeFlags = (u8, u8, u8, u8, u8);
+
+fn frame_header_mode(i: (&[u8], usize)) -> IResult<(&[u8], usize), ModeFlags> {
   let (i, channel) = take(2usize)(i)?;
   let (i, mode) = take(2usize)(i)?;
   let (i, copyright) = take(1usize)(i)?;

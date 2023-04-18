@@ -404,11 +404,8 @@ impl ID3rs {
   }
 
   pub fn set_comment(&mut self, description: &str, value: &str) {
-    if let Some(index) = self.frames.iter().position(|frame|
-      match frame {
-        Frame::Comment { .. } => true,
-        _ => false
-      }) {
+    if let Some(index) = self.frames.iter()
+      .position(|frame| matches!(frame, Frame::Comment { .. })) {
       self.frames.remove(index);
     }
     self.push_new_frame(Frame::Comment {
@@ -460,6 +457,7 @@ pub fn mpck(filepath: &str) -> String {
   String::from_utf8(output.stdout).unwrap().replace(filepath, "")
 }
 
+#[allow(clippy::permissions_set_readonly_false)]
 pub fn make_rwcopy(rofile: &str, rwfile: &str) -> Result<()> {
   fs::copy(rofile, rwfile)?;
   let mut perms = fs::metadata(rwfile)?.permissions();

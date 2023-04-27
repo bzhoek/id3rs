@@ -129,7 +129,11 @@ impl ID3rs {
     Ok((file, header))
   }
 
-  pub fn write(&self, target: impl AsRef<Path>) -> Result<()> {
+  pub fn write(&self) -> Result<()> {
+    self.write_to(&self.path)
+  }
+
+  pub fn write_to(&self, target: impl AsRef<Path>) -> Result<()> {
     let (mut file, header) = Self::read_header(&*self.path)?;
 
     let mut tmp: File = tempfile::tempfile()?;

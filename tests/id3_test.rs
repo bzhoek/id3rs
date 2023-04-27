@@ -29,7 +29,7 @@ mod tests {
         let mut tag = ID3rs::read(&rwfile).unwrap();
         tag.set_title("Hello");
         tag.set_artist("World");
-        tag.write(rwfile).unwrap();
+        tag.write_to(rwfile).unwrap();
         exit(0);
       });
     }
@@ -156,7 +156,7 @@ mod tests {
 
         tag.set_object("HELLO.TXT", "text/plain", "Hello", &"Hello, world".as_bytes());
         tag.set_extended_text("EnergyLevel", "99");
-        tag.write(&rwfile).unwrap();
+        tag.write_to(&rwfile).unwrap();
       });
     }
 
@@ -166,7 +166,7 @@ mod tests {
         let mut tag = ID3rs::read(&rwfile).unwrap();
         tag.set_extended_text("OriginalTitle", &tag.title().unwrap().to_string());
         tag.set_extended_text("EnergyLevel", "99");
-        tag.write(&rwfile).unwrap();
+        tag.write_to(&rwfile).unwrap();
 
         let tag = ID3rs::read(&rwfile).unwrap();
         assert_eq!(tag.extended_text("OriginalTitle"), Some("Tink"));
@@ -181,7 +181,7 @@ mod tests {
         let mut tag = ID3rs::read(&rwfile).unwrap();
         let cover = fs::read("samples/cover.jpg").unwrap();
         tag.set_attached_picture(Picture::FrontCover, "image/jpg", "cover", &*cover);
-        tag.write(&rwfile).unwrap();
+        tag.write_to(&rwfile).unwrap();
 
         let tag = ID3rs::read(&rwfile).unwrap();
         let picture = tag.attached_picture(Picture::FrontCover).unwrap();
@@ -248,7 +248,7 @@ mod tests {
       assert_eq!(tag.text(GENRE_TAG), Some("sounds"));
       assert_eq!(tag.genre(), Some("sounds"));
       tag.set_genre("notech");
-      tag.write(&rwfile).unwrap();
+      tag.write_to(&rwfile).unwrap();
 
       let tag = ID3rs::read(&rwfile).unwrap();
       assert_eq!(tag.genre(), Some("notech"));
@@ -271,7 +271,7 @@ mod tests {
     rw_test("samples/4tink", |(rofile, outfile, _)| {
       let mut tag = ID3rs::read(&rofile).unwrap();
       tag.set_comment("", "New comment");
-      tag.write(&outfile).unwrap();
+      tag.write_to(&outfile).unwrap();
       assert_eq!(mpck(&rofile), mpck(&outfile));
     });
   }
@@ -282,7 +282,7 @@ mod tests {
       let mut tag = ID3rs::read(&rofile).unwrap();
       tag.set_title("Bleek");
       tag.set_extended_text("EnergyLevel", "99");
-      tag.write(&outfile).unwrap();
+      tag.write_to(&outfile).unwrap();
       assert_eq!(mpck(&rofile), mpck(&outfile));
     });
   }
@@ -293,7 +293,7 @@ mod tests {
       let mut tag = ID3rs::read(&rwfile).unwrap();
       tag.set_title("Bleek");
       tag.set_extended_text("EnergyLevel", "99");
-      tag.write(&rwfile).unwrap();
+      tag.write_to(&rwfile).unwrap();
       assert_eq!(mpck(&rofile), mpck(&rwfile));
     });
   }

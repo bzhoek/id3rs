@@ -176,6 +176,19 @@ mod tests {
     }
 
     #[test]
+    pub fn test_set_track() {
+      rw_test(FILENAME, |(rofile, _, rwfile)| {
+        let mut tag = ID3rs::read(&rwfile).unwrap();
+        tag.set_track(1,1);
+        tag.write_to(&rwfile).unwrap();
+
+        let tag = ID3rs::read(&rwfile).unwrap();
+        assert_eq!(tag.track(), Some("1/1"));
+        assert_eq!(mpck(&rofile), mpck(&rwfile));
+      });
+    }
+
+    #[test]
     pub fn test_attach_picture() {
       rw_test(FILENAME, |(_, _, rwfile)| {
         let mut tag = ID3rs::read(&rwfile).unwrap();

@@ -12,6 +12,7 @@ pub static TITLE_TAG: &str = "TIT2";
 pub static SUBTITLE_TAG: &str = "TIT3";
 pub static ALBUM_TAG: &str = "TALB";
 pub static ARTIST_TAG: &str = "TPE1";
+pub static TRACK_TAG: &str = "TRCK";
 pub static GENRE_TAG: &str = "TCON";
 pub static KEY_TAG: &str = "TKEY";
 pub static COMMENT_TAG: &str = "COMM";
@@ -350,6 +351,8 @@ impl ID3rs {
 
   pub fn grouping(&self) -> Option<&str> { self.text(GROUPING_TAG) }
 
+  pub fn track(&self) -> Option<&str> { self.text(TRACK_TAG) }
+
   pub fn set_title(&mut self, text: &str) {
     self.set_text(TITLE_TAG, text);
   }
@@ -364,6 +367,11 @@ impl ID3rs {
 
   pub fn set_subtitle(&mut self, text: &str) {
     self.set_text(SUBTITLE_TAG, text);
+  }
+
+  pub fn set_track(&mut self, index: usize, total: usize) {
+    let trck = format!("{}/{}", index, total);
+    self.set_text(TRACK_TAG, &trck);
   }
 
   pub fn set_key(&mut self, text: &str) { self.set_text(KEY_TAG, text); }
@@ -391,7 +399,7 @@ impl ID3rs {
     })
   }
 
-  fn set_text(&mut self, id3: &str, change: &str) {
+  pub fn set_text(&mut self, id3: &str, change: &str) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {
         Frame::Text { id, .. } => id == id3,

@@ -4,7 +4,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use log::{debug, LevelFilter};
+use log::{debug, warn, LevelFilter};
 
 use crate::parsers::{all_frames, as_syncsafe, file_header, v23_len, v24_len};
 
@@ -13,6 +13,7 @@ pub static SUBTITLE_TAG: &str = "TIT3";
 pub static ALBUM_TAG: &str = "TALB";
 pub static ARTIST_TAG: &str = "TPE1";
 pub static TRACK_TAG: &str = "TRCK";
+pub static POPULARITY_TAG: &str = "POPM";
 pub static GENRE_TAG: &str = "TCON";
 pub static KEY_TAG: &str = "TKEY";
 pub static COMMENT_TAG: &str = "COMM";
@@ -60,6 +61,13 @@ pub enum Frame {
     size: u32,
     flags: u16,
     text: String,
+  },
+  Popularity {
+    id: String,
+    size: u32,
+    flags: u16,
+    email: String,
+    rating: u8,
   },
   Object {
     id: String,
@@ -258,7 +266,18 @@ impl ID3rs {
           out.write_all(b"\x00")?;
           out.write_all(data)?;
         }
-        _ => {}
+        Frame::Popularity { id, flags, email, rating, .. } => {
+          let len = email.len() + 2; // NULL byte and rating
+          let size = as_syncsafe(len as u32);
+          debug!("picture {} len {}", id, len);
+          out.write_all(id.as_ref())?;
+          out.write_all(&size)?;
+          out.write_all(&flags.to_be_bytes())?;
+          out.write_all(email.as_bytes())?;
+          out.write_all(b"\x00")?;
+          out.write(&[*rating])?;
+        }
+        _ => warn!("Frame not written: {:?}", frame)
       }
     }
     Ok(())
@@ -397,6 +416,19 @@ impl ID3rs {
       mime_type: mime_type.to_string(),
       data: Vec::from(data),
     })
+  }
+
+  pub fn set_popularity(&mut self, author: &str, rating: u8) {
+    assert!(rating <= 5);
+    if let Some(index) = self.frames.iter().position(|frame|
+      match frame {
+        Frame::Popularity { id, email, .. } => id == POPULARITY_TAG && email == author,
+        _ => false
+      }) {
+      self.frames.remove(index);
+    }
+    let adjusted = rating * 51;
+    self.push_new_frame(Frame::Popularity { id: POPULARITY_TAG.to_string(), size: 0, flags: 0, email: author.to_string(), rating: adjusted });
   }
 
   pub fn set_text(&mut self, id3: &str, change: &str) {

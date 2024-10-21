@@ -176,6 +176,20 @@ mod tests {
     }
 
     #[test]
+    pub fn test_set_popularity() {
+      rw_test(FILENAME, |(rofile, _, rwfile)| {
+        let mut tag = ID3rs::read(&rwfile).unwrap();
+        tag.set_popularity("traktor@native-instruments.de", 3);
+        tag.set_track(1,1);
+        tag.write_to(&rwfile).unwrap();
+
+        let tag = ID3rs::read(&rwfile).unwrap();
+        assert_eq!(tag.track(), Some("1/1"));
+        assert_eq!(mpck(&rofile), mpck(&rwfile));
+      });
+    }
+
+    #[test]
     pub fn test_set_track() {
       rw_test(FILENAME, |(rofile, _, rwfile)| {
         let mut tag = ID3rs::read(&rwfile).unwrap();
@@ -344,6 +358,7 @@ mod tests {
         Frame::Object { size, .. } => ID3FRAME_SIZE + size,
         Frame::Padding { size } => 0 + size,
         Frame::Picture { size, .. } => ID3FRAME_SIZE + size,
+        Frame::Popularity { .. } => 0
       });
 
     assert_eq!(sum, 1114);
@@ -357,6 +372,7 @@ mod tests {
         Frame::Object { size, .. } => ID3FRAME_SIZE + size,
         Frame::Padding { size } => 0 + size,
         Frame::Picture { size, .. } => ID3FRAME_SIZE + size,
+        Frame::Popularity { .. } => 0
       });
 
     let _double_utf16 = 15 + 23 + 11 + 3 + 15 + (5 * 2); // 67

@@ -179,12 +179,12 @@ mod tests {
     pub fn test_set_popularity() {
       rw_test(FILENAME, |(rofile, _, rwfile)| {
         let mut tag = ID3rs::read(&rwfile).unwrap();
-        tag.set_popularity("traktor@native-instruments.de", 3);
-        tag.set_track(1,1);
+        tag.set_popularity("bas@hoek.com", 3);
+        tag.set_track(1, 1);
         tag.write_to(&rwfile).unwrap();
 
         let tag = ID3rs::read(&rwfile).unwrap();
-        assert_eq!(tag.track(), Some("1/1"));
+        assert_eq!(tag.popularity(), Some(("bas@hoek.com", 3)));
         assert_eq!(mpck(&rofile), mpck(&rwfile));
       });
     }
@@ -193,7 +193,7 @@ mod tests {
     pub fn test_set_track() {
       rw_test(FILENAME, |(rofile, _, rwfile)| {
         let mut tag = ID3rs::read(&rwfile).unwrap();
-        tag.set_track(1,1);
+        tag.set_track(1, 1);
         tag.write_to(&rwfile).unwrap();
 
         let tag = ID3rs::read(&rwfile).unwrap();

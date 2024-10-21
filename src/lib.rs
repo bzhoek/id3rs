@@ -301,6 +301,16 @@ impl ID3rs {
     })
   }
 
+  pub fn popularity(&self) -> Option<(&str, u8)> {
+    self.frames.iter().find_map(|f| {
+      match f {
+        Frame::Popularity { id, email, rating, .. } if id == POPULARITY_TAG =>
+          Some((email.as_str(), rating / 51)),
+        _ => None
+      }
+    })
+  }
+
   pub fn objects(&self, identifier: &str) -> Vec<&Frame> {
     self.frames.iter().filter(|f| match f {
       Frame::Object { id, .. } => id == identifier,

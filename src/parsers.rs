@@ -11,7 +11,7 @@ use nom::number::complete::be_u32;
 use nom::number::streaming::{be_u16, be_u8, le_u16, le_u8};
 use nom::sequence::{pair, tuple};
 
-use crate::{COMMENT_TAG, EXTENDED_TAG, Frame, Header, OBJECT_TAG, PICTURE_TAG};
+use crate::{COMMENT_TAG, EXTENDED_TAG, Frame, Header, OBJECT_TAG, PICTURE_TAG, POPULARITY_TAG};
 
 fn id_as_str(input: &[u8]) -> IResult<&[u8], &str> {
   map(
@@ -41,6 +41,7 @@ pub fn all_frames(len: fn(&[u8]) -> IResult<&[u8], u32>)
         object_frame(len),
         picture_frame(len),
         text_frame(len),
+        popularity_frame(len),
         generic_frame(len))),
         eof),
       |(frames, _)| frames)(input)
@@ -87,6 +88,22 @@ pub fn comment_frame(len: fn(&[u8]) -> IResult<&[u8], u32>)
     let (_data, (description, value)) = encoded_string_pair(encoding, data)?;
     debug!("comment {} {} {} {}", size, language, description, value);
     Ok((input, Frame::Comment { id: COMMENT_TAG.to_string(), size, flags, language: language.to_string(), description, value }))
+  }
+}
+
+pub fn popularity_frame(len: fn(&[u8]) -> IResult<&[u8], u32>)
+  -> impl FnMut(&[u8])
+    -> IResult<&[u8], Frame> {
+  move |input| {
+    let (input, (_id, size, flags, email, rating)) =
+      tuple((
+        tag(POPULARITY_TAG),
+        len,
+        be_u16,
+        terminated_utf8,
+        be_u8,
+      ))(input)?;
+    Ok((input, Frame::Popularity { id: POPULARITY_TAG.to_string(), size, flags, email, rating }))
   }
 }
 

@@ -284,22 +284,20 @@ impl ID3rs {
   }
 
   pub fn text(&self, identifier: &str) -> Option<&str> {
-    self.frames.iter().find(|f| match f {
-      Frame::Text { id, .. } => id == identifier,
-      _ => false
-    }).and_then(|f| match f {
-      Frame::Text { text, .. } => Some(text.as_str()),
-      _ => None
+    self.frames.iter().find_map(|f| {
+      match f {
+        Frame::Text { id, text, .. } if id == identifier => Some(text.as_str()),
+        _ => None
+      }
     })
   }
 
   pub fn comment(&self) -> Option<&str> {
-    self.frames.iter().find(|f| match f {
-      Frame::Comment { id, .. } => id == COMMENT_TAG,
-      _ => false
-    }).and_then(|f| match f {
-      Frame::Comment { value, .. } => Some(value.as_str()),
-      _ => None
+    self.frames.iter().find_map(|f| {
+      match f {
+        Frame::Comment { id, value, .. } if id == COMMENT_TAG => Some(value.as_str()),
+        _ => None
+      }
     })
   }
 

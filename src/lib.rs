@@ -509,7 +509,7 @@ pub fn mpck(filepath: &str) -> String {
   let output = Command::new("mpck")
     .arg(filepath)
     .output()
-    .expect("failed to execute process");
+    .expect(format!("Failed `mpck {}`", filepath).as_str());
 
   String::from_utf8(output.stdout).unwrap().replace(filepath, "")
 }

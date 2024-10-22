@@ -1,1 +1,4 @@
 /target
+samples/*-rw*.mp3
+ID3.xcframework/
+bundle.zip

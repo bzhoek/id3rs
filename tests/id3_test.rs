@@ -52,7 +52,7 @@ mod tests {
     #[test]
     pub fn test_cue_points() {
       log_init();
-      let tag = ID3rs::read("samples/0. Psycho Killer -- Talking Heads [5093662].mp3").unwrap();
+      let tag = ID3rs::read("samples/psycho.mp3").unwrap();
       let data = tag.object_by_description("CuePoints").and_then(|f| match f {
         Frame::Object { data, .. } => Some(data),
         _ => None

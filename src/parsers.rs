@@ -103,6 +103,8 @@ pub fn popularity_frame(len: fn(&[u8]) -> IResult<&[u8], u32>)
         terminated_utf8,
         be_u8,
       ))(input)?;
+    let remaining = size - (email.len() + 2) as u32;
+    let (input, _counter) = take(remaining)(input)?;
     Ok((input, Frame::Popularity { id: POPULARITY_TAG.to_string(), size, flags, email, rating }))
   }
 }

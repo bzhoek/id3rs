@@ -7,32 +7,18 @@ mod tests {
 
   use assert_matches::assert_matches;
 
-  use id3rs::{Frame, GENRE_TAG, ID3rs, log_init, make_rwcopy, mpck};
-  use id3rs::parsers::as_syncsafe;
   use crate::ID3FRAME_SIZE;
+  use id3rs::parsers::as_syncsafe;
+  use id3rs::{log_init, make_rwcopy, mpck, Frame, ID3rs, GENRE_TAG};
 
   mod v23 {
-    use std::process::exit;
     use std::str::from_utf8;
 
-    use id3rs::{EXTENDED_TAG, Frame, ID3rs, log_init, OBJECT_TAG, TITLE_TAG};
+    use id3rs::{log_init, Frame, ID3rs, EXTENDED_TAG, OBJECT_TAG, TITLE_TAG};
 
     use super::*;
 
     const FILENAME: &str = "samples/3tink";
-
-    #[test]
-    pub fn test_adding() {
-      log_init();
-      let file = "/Users/bas/Downloads/1. Nova -- Tale Of Us [508821602]".to_string();
-      rw_test(&file, |(_, _, rwfile)| {
-        let mut tag = ID3rs::read(&rwfile).unwrap();
-        tag.set_title("Hello");
-        tag.set_artist("World");
-        tag.write_to(rwfile).unwrap();
-        exit(0);
-      });
-    }
 
     #[test]
     pub fn test_reading() {

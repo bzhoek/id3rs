@@ -24,6 +24,7 @@ pub static PICTURE_TAG: &str = "APIC";
 
 pub mod frame;
 pub mod parsers;
+pub mod ffi;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Header {

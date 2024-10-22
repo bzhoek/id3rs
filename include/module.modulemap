@@ -1,0 +1,4 @@
+module ID3 {
+    header "id3.h"
+    export *
+}

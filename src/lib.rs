@@ -408,6 +408,10 @@ impl ID3rs {
     self.set_text(GENRE_TAG, text);
   }
 
+  pub fn set_grouping(&mut self, text: &str) {
+    self.set_text(GROUPING_TAG, text);
+  }
+
   pub fn set_object(&mut self, name: &str, mime_type: &str, description: &str, data: &[u8]) {
     if let Some(index) = self.frames.iter().position(|frame|
       match frame {

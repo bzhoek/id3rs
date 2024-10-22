@@ -13,4 +13,6 @@ void id3_write(struct ID3rs *ptr, const char *file);
 
 void id3_set_popularity(struct ID3rs *ptr, const char *email, uint8_t rating);
 
+void id3_set_grouping(struct ID3rs *ptr, const char *group);
+
 void id3_free(struct ID3rs *ptr);

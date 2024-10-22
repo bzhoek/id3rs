@@ -38,6 +38,19 @@ pub extern "C" fn id3_set_popularity(ptr: *mut ID3rs, email: *const c_char, rati
 }
 
 #[no_mangle]
+pub extern "C" fn id3_set_grouping(ptr: *mut ID3rs, group: *const c_char) {
+  let id3rs = unsafe {
+    assert!(!ptr.is_null());
+    &mut *ptr
+  };
+  let group = unsafe {
+    assert!(!group.is_null());
+    CStr::from_ptr(group).to_str().unwrap()
+  };
+  id3rs.set_grouping(group);
+}
+
+#[no_mangle]
 pub extern "C" fn id3_free(ptr: *mut ID3rs) {
   if ptr.is_null() {
     return;

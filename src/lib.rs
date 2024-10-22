@@ -276,7 +276,7 @@ impl ID3rs {
           out.write_all(&flags.to_be_bytes())?;
           out.write_all(email.as_bytes())?;
           out.write_all(b"\x00")?;
-          out.write(&[*rating])?;
+          out.write_all(&[*rating])?;
         }
         _ => warn!("Frame not written: {:?}", frame)
       }
@@ -509,7 +509,7 @@ pub fn mpck(filepath: &str) -> String {
   let output = Command::new("mpck")
     .arg(filepath)
     .output()
-    .expect(format!("Failed `mpck {}`", filepath).as_str());
+    .unwrap_or_else(|_| panic!("Failed `mpck {}`", filepath));
 
   String::from_utf8(output.stdout).unwrap().replace(filepath, "")
 }

@@ -13,6 +13,7 @@ pub static SUBTITLE_TAG: &str = "TIT3";
 pub static YEAR_TAG: &str = "TDRC";
 pub static ALBUM_TAG: &str = "TALB";
 pub static ARTIST_TAG: &str = "TPE1";
+pub static ALBUM_ARTIST_TAG: &str = "TPE2";
 pub static TRACK_TAG: &str = "TRCK";
 pub static POPULARITY_TAG: &str = "POPM";
 pub static GENRE_TAG: &str = "TCON";
@@ -396,6 +397,10 @@ impl ID3rs {
 
   pub fn set_artist(&mut self, text: &str) {
     self.set_text(ARTIST_TAG, text);
+  }
+
+  pub fn set_album_artist(&mut self, text: &str) {
+    self.set_text(ALBUM_ARTIST_TAG, text);
   }
 
   pub fn set_subtitle(&mut self, text: &str) {

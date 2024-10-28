@@ -52,6 +52,7 @@ pub fn padding(input: &[u8]) -> IResult<&[u8], Frame> {
   let (input, pad) =
     many_till(tag(b"\x00"), eof)
       (input)?;
+  debug!("Padding: {}", pad.0.len());
   Ok((input, Frame::Padding { size: pad.0.len() as u32 }))
 }
 

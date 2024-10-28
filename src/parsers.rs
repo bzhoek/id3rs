@@ -62,10 +62,10 @@ pub fn extended_text_frame(len: fn(&[u8]) -> IResult<&[u8], u32>)
   move |input| {
     let (input, (id, size, flags)) = tuple((tag(EXTENDED_TAG), len, be_u16))(input)?;
     let id = from_utf8(id).unwrap().to_string();
-    debug!("extended {}", id);
+    debug!("Extended: {}", id);
     let (input, (encoding, data)) = pair(be_u8, take(size - 1))(input)?;
     let (_data, (description, value)) = encoded_string_pair(encoding, data)?;
-    debug!("extended {} value {}", description, value);
+    debug!("Extended: {} value {}", description, value);
     Ok((input, Frame::ExtendedText { id, size, flags, description, value }))
   }
 }
@@ -87,7 +87,7 @@ pub fn comment_frame(len: fn(&[u8]) -> IResult<&[u8], u32>)
       ))(input)?;
     let (input, data) = take(size - 4)(input)?;
     let (_data, (description, value)) = encoded_string_pair(encoding, data)?;
-    debug!("comment {} {} {} {}", size, language, description, value);
+    debug!("Comment: {} {} {} {}", size, language, description, value);
     Ok((input, Frame::Comment { id: COMMENT_TAG.to_string(), size, flags, language: language.to_string(), description, value }))
   }
 }
@@ -106,6 +106,7 @@ pub fn popularity_frame(len: fn(&[u8]) -> IResult<&[u8], u32>)
       ))(input)?;
     let remaining = size - (email.len() + 2) as u32;
     let (input, _counter) = take(remaining)(input)?;
+    debug!("Popularity: {} {}", email, rating);
     Ok((input, Frame::Popularity { id: POPULARITY_TAG.to_string(), size, flags, email, rating }))
   }
 }
@@ -116,13 +117,13 @@ pub fn object_frame(len: fn(&[u8]) -> IResult<&[u8], u32>)
   move |input| {
     let (input, (id, size, flags)) = tuple((tag(OBJECT_TAG), len, be_u16))(input)?;
     let id = from_utf8(id).unwrap().to_string();
-    debug!("object {:?} {}",  id, size);
+    debug!("Object: {:?} {}",  id, size);
     let offset = input.len();
     let (input, encoding) = be_u8(input)?;
     let (input, mime_type) = terminated_utf8(input)?;
     let (input, (filename, description)) = encoded_string_pair(encoding, input)?;
     let remaining = size - (offset - input.len()) as u32;
-    debug!("mime {}, filename {}, size {}, description {}", mime_type, filename, remaining, description);
+    debug!("Object: {}, filename {}, size {}, description {}", mime_type, filename, remaining, description);
     let (input, data) = take(remaining)(input)?;
     Ok((input, Frame::Object { id, size, flags, mime_type, filename, description, data: data.into() }))
   }
@@ -134,7 +135,7 @@ pub fn picture_frame(len: fn(&[u8]) -> IResult<&[u8], u32>)
   move |input| {
     let (input, (id, size, flags)) = tuple((tag(PICTURE_TAG), len, be_u16))(input)?;
     let id = from_utf8(id).unwrap().to_string();
-    debug!("picture {:?} {}",  id, size);
+    debug!("Picture: {:?} {}",  id, size);
     let start = input.len();
     let (input, encoding) = be_u8(input)?;
     let (input, mime_type) = terminated_utf8(input)?;
@@ -142,7 +143,7 @@ pub fn picture_frame(len: fn(&[u8]) -> IResult<&[u8], u32>)
     let (input, description) = encoded_string(encoding, input)?;
     let remaining = size - (start - input.len()) as u32;
     let (input, data) = take(remaining)(input)?;
-    debug!("mime {}, size {}, description {}", mime_type, remaining, description);
+    debug!("Picture: {}, size {}, description {}", mime_type, remaining, description);
     Ok((input, Frame::Picture { id, size, flags, mime_type, kind, description, data: data.into() }))
   }
 }
@@ -162,7 +163,7 @@ pub fn text_frame(len: fn(&[u8]) -> IResult<&[u8], u32>)
     let (input, (encoding, data)) = pair(be_u8, take(size - 1))(input)?;
     let (_data, text) = encoded_string(encoding, data)?;
     let merged = format!("{}{}", pid, id);
-    debug!("utf8v23 {} {} {}", merged, size, text);
+    debug!("Text: {} {} {}", merged, size, text);
     Ok((input, Frame::Text { id: merged, size, flags, text }))
   }
 }
@@ -173,7 +174,7 @@ pub fn generic_frame(len: fn(&[u8]) -> IResult<&[u8], u32>)
   move |input| {
     let (input, (id, size, flags)) =
       tuple((id_as_str, len, be_u16))(input)?;
-    debug!("frame {} {}", id, size);
+    debug!("Generic: {} {}", id, size);
     let (input, data) = take(size)(input)?;
     Ok((input, Frame::Generic { id: id.to_string(), size, flags, data: data.into() }))
   }

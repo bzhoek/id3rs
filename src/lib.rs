@@ -142,8 +142,10 @@ impl ID3rs {
     Ok((file, header))
   }
 
-  pub fn write(&self) -> Result<()> {
-    self.write_to(&self.path)
+  pub fn write(&mut self) -> Result<()> {
+    self.write_to(&self.path)?;
+    self.dirty = false;
+    Ok(())
   }
 
   pub fn write_to(&self, target: impl AsRef<Path>) -> Result<()> {

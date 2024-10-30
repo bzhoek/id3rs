@@ -38,7 +38,7 @@ mod tests {
       let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3rs::read(&rofile).unwrap();
 
-      assert_eq!(tag.padding(), Some(896));
+      assert_eq!(tag.padding(), 896);
     }
 
     #[test]
@@ -151,20 +151,20 @@ mod tests {
       let (rofile, _, _) = filenames(FILENAME);
       let tag = ID3rs::read(&rofile).unwrap();
 
-      assert_eq!(tag.padding(), Some(831));
+      assert_eq!(tag.padding(), 831);
     }
 
     #[test]
     pub fn test_add_padding() {
       rw_test(UNPADDED, |(_, _, rwfile)| {
         let mut tag = ID3rs::read(&rwfile).unwrap();
-        assert_eq!(tag.padding(), None);
+        assert_eq!(tag.padding(), 0);
 
         tag.set_object("HELLO.TXT", "text/plain", "Hello", &"Hello, world".as_bytes());
         tag.set_extended_text("EnergyLevel", "99");
         tag.write_to(&rwfile).unwrap();
         let tag = ID3rs::read(&rwfile).unwrap();
-        assert_eq!(tag.padding(), Some(647));
+        assert_eq!(tag.padding(), 647);
       });
     }
 
@@ -172,14 +172,14 @@ mod tests {
     pub fn test_set_object() {
       rw_test(FILENAME, |(_, _, rwfile)| {
         let mut tag = ID3rs::read(&rwfile).unwrap();
-        assert_eq!(tag.padding(), Some(831));
+        assert_eq!(tag.padding(), 831);
 
         tag.set_object("HELLO.TXT", "text/plain", "Hello", &"Hello, world".as_bytes());
         tag.set_extended_text("EnergyLevel", "99");
         tag.write_to(&rwfile).unwrap();
 
         let tag = ID3rs::read(&rwfile).unwrap();
-        assert_eq!(tag.padding(), Some(747));
+        assert_eq!(tag.padding(), 747);
       });
     }
 

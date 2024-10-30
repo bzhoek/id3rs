@@ -301,13 +301,13 @@ impl ID3rs {
     Ok(())
   }
 
-  pub fn padding(&self) -> Option<u32> {
+  pub fn padding(&self) -> u32 {
     self.frames.iter().find_map(|f| {
       match f {
         Frame::Padding { size } => Some(*size),
         _ => None
       }
-    })
+    }).unwrap_or(0)
   }
 
   pub fn text(&self, identifier: &str) -> Option<&str> {

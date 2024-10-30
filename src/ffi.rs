@@ -1,6 +1,8 @@
 use crate::ID3rs;
 use std::ffi::{c_char, CStr};
 
+// https://jakegoulding.com/rust-ffi-omnibus/objects/
+
 #[no_mangle]
 pub unsafe extern "C" fn id3_read(file: *const c_char) -> *mut ID3rs {
   assert!(!file.is_null());

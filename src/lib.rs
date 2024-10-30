@@ -4,7 +4,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use log::{debug, warn, LevelFilter};
+use log::{debug, LevelFilter};
 
 use crate::parsers::{all_frames, as_syncsafe, file_header, v23_len, v24_len};
 
@@ -300,7 +300,9 @@ impl ID3rs {
           out.write_all(b"\x00")?;
           out.write_all(&[*rating])?;
         }
-        _ => warn!("Frame not written: {:?}", frame)
+        Frame::Padding { size } => {
+          debug!("padding was {}", size);
+        }
       }
     }
     Ok(())

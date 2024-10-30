@@ -194,15 +194,13 @@ impl ID3rs {
 
   fn write_padding(&self, out: &mut File) -> Result<u64> {
     let mut header_size = out.stream_position()? - ID3HEADER_SIZE;
-    if header_size < self.header_size {
-      let padding = self.header_size - header_size;
-      out.write_all(&vec![0; padding as usize])?;
-      header_size = self.header_size;
+    let padding = if header_size < self.header_size {
+      self.header_size - header_size
     } else {
-      let padding = (2 * ID3HEADER_ALIGN) - (ID3HEADER_SIZE + header_size) % ID3HEADER_ALIGN;
-      out.write_all(&vec![0; padding as usize])?;
-      header_size += padding;
-    }
+      (2 * ID3HEADER_ALIGN) - (ID3HEADER_SIZE + header_size) % ID3HEADER_ALIGN
+    };
+    out.write_all(&vec![0; padding as usize])?;
+    header_size += padding;
     Ok(header_size)
   }
 

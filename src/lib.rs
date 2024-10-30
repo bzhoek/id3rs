@@ -100,6 +100,7 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + S
 
 pub struct ID3rs {
   pub path: PathBuf,
+  pub header_size: u32,
   pub frames: Vec<Frame>,
   pub dirty: bool,
 }
@@ -128,9 +129,9 @@ impl ID3rs {
           v => Err(format!("Invalid version: {}", v))?
         };
 
-        Ok(ID3rs { path, frames: result, dirty: false })
+        Ok(ID3rs { path, header_size: header.tag_size, frames: result, dirty: false })
       }
-      None => Ok(ID3rs { path, frames: vec![], dirty: false })
+      None => Ok(ID3rs { path, header_size: 0, frames: vec![], dirty: false })
     }
   }
 
@@ -168,12 +169,23 @@ impl ID3rs {
 
     ID3rs::write_id3_frames(&self.frames, &mut out)?;
 
-    let size = out.stream_position()? - ID3HEADER_SIZE as u64;
-    debug!("new tag size {}", size);
-    let vec = as_syncsafe(size as u32);
+    let mut header_size = out.stream_position()? - ID3HEADER_SIZE as u64;
+    if header_size < self.header_size as u64 {
+      let padding = self.header_size - header_size as u32;
+      out.write_all(&vec![0; padding as usize])?;
+      header_size = self.header_size as u64;
+    } else {
+      let page = 512;
+      let padding = (2 * page) - (ID3HEADER_SIZE as u64 + header_size) % page;
+      out.write_all(&vec![0; padding as usize])?;
+      header_size += padding;
+    }
+
+    debug!("new tag size {}", header_size);
+    let vec = as_syncsafe(header_size as u32);
     out.seek(SeekFrom::Start(6))?;
     out.write_all(&vec)?;
-    out.seek(SeekFrom::Start(ID3HEADER_SIZE as u64 + size))?;
+    out.seek(SeekFrom::Start(ID3HEADER_SIZE as u64 + header_size))?;
 
     if overwrite {
       tmp.seek(SeekFrom::Start(0))?;
@@ -287,6 +299,15 @@ impl ID3rs {
       }
     }
     Ok(())
+  }
+
+  pub fn padding(&self) -> Option<u32> {
+    self.frames.iter().find_map(|f| {
+      match f {
+        Frame::Padding { size } => Some(*size),
+        _ => None
+      }
+    })
   }
 
   pub fn text(&self, identifier: &str) -> Option<&str> {

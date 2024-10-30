@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     pub fn test_add_padding() {
-      rw_test(UNPADDED, |(_, _, rwfile)| {
+      rw_test(UNPADDED, |(rofile, _, rwfile)| {
         let mut tag = ID3rs::read(&rwfile).unwrap();
         assert_eq!(tag.padding(), 0);
 
@@ -165,12 +165,13 @@ mod tests {
         tag.write_to(&rwfile).unwrap();
         let tag = ID3rs::read(&rwfile).unwrap();
         assert_eq!(tag.padding(), 647);
+        assert_eq!(mpck(&rofile), mpck(&rwfile));
       });
     }
 
     #[test]
     pub fn test_set_object() {
-      rw_test(FILENAME, |(_, _, rwfile)| {
+      rw_test(FILENAME, |(rofile, _, rwfile)| {
         let mut tag = ID3rs::read(&rwfile).unwrap();
         assert_eq!(tag.padding(), 831);
 
@@ -180,6 +181,7 @@ mod tests {
 
         let tag = ID3rs::read(&rwfile).unwrap();
         assert_eq!(tag.padding(), 747);
+        assert_eq!(mpck(&rofile), mpck(&rwfile));
       });
     }
 

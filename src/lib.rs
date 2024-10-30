@@ -169,17 +169,7 @@ impl ID3rs {
 
     ID3rs::write_id3_frames(&self.frames, &mut out)?;
 
-    let mut header_size = out.stream_position()? - ID3HEADER_SIZE as u64;
-    if header_size < self.header_size as u64 {
-      let padding = self.header_size - header_size as u32;
-      out.write_all(&vec![0; padding as usize])?;
-      header_size = self.header_size as u64;
-    } else {
-      let page = 512;
-      let padding = (2 * page) - (ID3HEADER_SIZE as u64 + header_size) % page;
-      out.write_all(&vec![0; padding as usize])?;
-      header_size += padding;
-    }
+    let header_size = self.write_padding(&mut out)?;
 
     debug!("new tag size {}", header_size);
     let vec = as_syncsafe(header_size as u32);
@@ -199,6 +189,21 @@ impl ID3rs {
     };
 
     Ok(())
+  }
+
+  fn write_padding(&self, out: &mut File) -> Result<u64> {
+    let mut header_size = out.stream_position()? - ID3HEADER_SIZE as u64;
+    if header_size < self.header_size as u64 {
+      let padding = self.header_size - header_size as u32;
+      out.write_all(&vec![0; padding as usize])?;
+      header_size = self.header_size as u64;
+    } else {
+      let page = 512;
+      let padding = (2 * page) - (ID3HEADER_SIZE as u64 + header_size) % page;
+      out.write_all(&vec![0; padding as usize])?;
+      header_size += padding;
+    }
+    Ok(header_size)
   }
 
   fn write_id3_frames(frames: &[Frame], out: &mut File) -> Result<()> {

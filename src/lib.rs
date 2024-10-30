@@ -113,6 +113,7 @@ pub enum Picture {
 }
 
 pub const ID3HEADER_SIZE: u64 = 10;
+pub const ID3HEADER_ALIGN: u64 = 512;
 
 impl ID3rs {
   pub fn read(path: impl Into<PathBuf>) -> Result<ID3rs> {
@@ -198,8 +199,7 @@ impl ID3rs {
       out.write_all(&vec![0; padding as usize])?;
       header_size = self.header_size as u64;
     } else {
-      let page = 512;
-      let padding = (2 * page) - (ID3HEADER_SIZE + header_size) % page;
+      let padding = (2 * ID3HEADER_ALIGN) - (ID3HEADER_SIZE + header_size) % ID3HEADER_ALIGN;
       out.write_all(&vec![0; padding as usize])?;
       header_size += padding;
     }

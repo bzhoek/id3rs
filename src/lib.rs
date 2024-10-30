@@ -112,7 +112,7 @@ pub enum Picture {
   BackCover = 4,
 }
 
-pub const ID3HEADER_SIZE: usize = 10;
+pub const ID3HEADER_SIZE: u64 = 10;
 
 impl ID3rs {
   pub fn read(path: impl Into<PathBuf>) -> Result<ID3rs> {
@@ -137,7 +137,7 @@ impl ID3rs {
 
   fn read_header(path: impl AsRef<Path>) -> Result<(File, Option<Header>)> {
     let mut file = File::open(path)?;
-    let mut buffer = [0; ID3HEADER_SIZE];
+    let mut buffer = [0; ID3HEADER_SIZE as usize];
     file.read_exact(&mut buffer).unwrap();
     let header = file_header(&buffer).ok().map(|(_, header)| header);
     Ok((file, header))
@@ -157,7 +157,7 @@ impl ID3rs {
     let overwrite = <PathBuf as AsRef<Path>>::as_ref(&self.path) == target.as_ref();
     let mut out = if overwrite {
       if let Some(header) = &header {
-        file.seek(SeekFrom::Start(ID3HEADER_SIZE as u64 + header.tag_size as u64))?; // skip header and tag
+        file.seek(SeekFrom::Start(ID3HEADER_SIZE + header.tag_size as u64))?; // skip header and tag
       }
       std::io::copy(&mut file, &mut tmp)?;
       OpenOptions::new().write(true).truncate(true).open(&self.path)?
@@ -175,14 +175,14 @@ impl ID3rs {
     let vec = as_syncsafe(header_size as u32);
     out.seek(SeekFrom::Start(6))?;
     out.write_all(&vec)?;
-    out.seek(SeekFrom::Start(ID3HEADER_SIZE as u64 + header_size))?;
+    out.seek(SeekFrom::Start(ID3HEADER_SIZE + header_size))?;
 
     if overwrite {
       tmp.seek(SeekFrom::Start(0))?;
       std::io::copy(&mut tmp, &mut out)?;
     } else {
       if let Some(header) = header {
-        file.seek(SeekFrom::Start(ID3HEADER_SIZE as u64 + header.tag_size as u64))?;
+        file.seek(SeekFrom::Start(ID3HEADER_SIZE + header.tag_size as u64))?;
       }
 
       std::io::copy(&mut file, &mut out)?;
@@ -192,14 +192,14 @@ impl ID3rs {
   }
 
   fn write_padding(&self, out: &mut File) -> Result<u64> {
-    let mut header_size = out.stream_position()? - ID3HEADER_SIZE as u64;
+    let mut header_size = out.stream_position()? - ID3HEADER_SIZE;
     if header_size < self.header_size as u64 {
       let padding = self.header_size - header_size as u32;
       out.write_all(&vec![0; padding as usize])?;
       header_size = self.header_size as u64;
     } else {
       let page = 512;
-      let padding = (2 * page) - (ID3HEADER_SIZE as u64 + header_size) % page;
+      let padding = (2 * page) - (ID3HEADER_SIZE + header_size) % page;
       out.write_all(&vec![0; padding as usize])?;
       header_size += padding;
     }

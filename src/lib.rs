@@ -100,7 +100,7 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + S
 
 pub struct ID3rs {
   pub path: PathBuf,
-  pub header_size: u32,
+  pub header_size: u64,
   pub frames: Vec<Frame>,
   pub dirty: bool,
 }
@@ -130,7 +130,7 @@ impl ID3rs {
           v => Err(format!("Invalid version: {}", v))?
         };
 
-        Ok(ID3rs { path, header_size: header.tag_size, frames: result, dirty: false })
+        Ok(ID3rs { path, header_size: header.tag_size as u64, frames: result, dirty: false })
       }
       None => Ok(ID3rs { path, header_size: 0, frames: vec![], dirty: false })
     }
@@ -194,10 +194,10 @@ impl ID3rs {
 
   fn write_padding(&self, out: &mut File) -> Result<u64> {
     let mut header_size = out.stream_position()? - ID3HEADER_SIZE;
-    if header_size < self.header_size as u64 {
-      let padding = self.header_size - header_size as u32;
+    if header_size < self.header_size {
+      let padding = self.header_size - header_size;
       out.write_all(&vec![0; padding as usize])?;
-      header_size = self.header_size as u64;
+      header_size = self.header_size;
     } else {
       let padding = (2 * ID3HEADER_ALIGN) - (ID3HEADER_SIZE + header_size) % ID3HEADER_ALIGN;
       out.write_all(&vec![0; padding as usize])?;

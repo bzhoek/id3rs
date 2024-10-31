@@ -159,6 +159,8 @@ impl ID3rs {
     let mut out = if overwrite {
       if let Some(header) = &header {
         file.seek(SeekFrom::Start(ID3HEADER_SIZE + header.tag_size as u64))?; // skip header and tag
+      } else {
+        file.seek(SeekFrom::Start(0))?;
       }
       std::io::copy(&mut file, &mut tmp)?;
       OpenOptions::new().write(true).truncate(true).open(&self.path)?

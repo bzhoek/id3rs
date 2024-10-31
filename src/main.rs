@@ -39,23 +39,23 @@ fn main() -> Result<()> {
       let filepath = sub.get_one::<String>("FILE").unwrap();
       let id3 = ID3rs::read(filepath)?;
       println!("  File: {:?}", filepath);
-      if let Some(title) = id3.title() {
-        println!(" Title: {}", title);
-      }
-      if let Some(artist) = id3.artist() {
-        println!("Artist: {}", artist);
-      }
-      if let Some(version) = id3.subtitle() {
-        if !version.is_empty() {
-          println!("Version: {}", version);
-        }
-      }
+      print(" Title", id3.title());
+      print(" Artist", id3.artist());
+      print("Version", id3.subtitle());
       println!("Offset: {:#06X}", id3.header_size + ID3HEADER_SIZE);
     }
     _ => unreachable!(),
   }
 
   Ok(())
+}
+
+fn print(header: &str, option: Option<&str>) {
+  if let Some(value) = option {
+    if !value.is_empty() {
+      println!("{}: {}", header, value);
+    }
+  }
 }
 
 fn first_frame(tag: ID3rs) -> Result<u16> {

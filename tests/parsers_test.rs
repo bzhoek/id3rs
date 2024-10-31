@@ -5,7 +5,16 @@ mod tests {
   use assert_matches::assert_matches;
 
   use id3rs::*;
-  use id3rs::parsers::{all_frames, comment_frame, extended_text_frame, file_header, generic_frame, object_frame, padding, text_frame, v24_len};
+  use id3rs::parsers::{all_frames, as_syncsafe, comment_frame, extended_text_frame, file_header, generic_frame, object_frame, padding, text_frame, v23_len, v24_len};
+
+  #[test]
+  fn test_tink_header_parsing() {
+    let bytes = b"\x00\x00\x02\x6F";
+    let (_, result) = v24_len(bytes).unwrap();
+    assert_eq!(result, 367);
+    let vec = as_syncsafe(367);
+    assert_eq!(vec, bytes);
+  }
 
   #[test]
   fn test_header_and_frames() {

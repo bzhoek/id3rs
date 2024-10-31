@@ -7,6 +7,10 @@ impl Mp3Header<'_> {
     Mp3Header { bytes }
   }
 
+  pub fn is_synced(&self) -> bool {
+    self.bytes[0] == 0xFF && (self.bytes[1] & 0b11110000) == 0b11110000
+  }
+
   pub fn version(&self) -> u8 {
     (self.bytes[1] & 0b00011000) >> 3
   }
@@ -61,8 +65,10 @@ impl Mp3Header<'_> {
 
 #[cfg(test)]
 mod tests {
-  use id3rs::frame::{frame_header, FrameHeader, Layer, Protection, Version};
   use crate::Mp3Header;
+  use id3rs::frame::{frame_header, FrameHeader, Layer, Protection, Version};
+  use std::fs::File;
+  use std::io::{Read, Seek, SeekFrom};
 
   #[test]
   fn find_frame_header() {
@@ -74,13 +80,13 @@ mod tests {
       version: Version::Version1,
       layer: Layer::Layer3,
       crc: Protection::Unprotected,
-      bitrate: 160,
-      frequency: 44100,
+      bitrate: 128,
+      frequency: 48000,
     });
   }
 
   #[test]
-  fn parse_mp3_header() {
+  fn parse_valid_mp3_header() {
     let bytes = b"\xFF\xFB\x94\x44";
 
     let header = Mp3Header::new(bytes);
@@ -88,10 +94,37 @@ mod tests {
   }
 
   #[test]
+  fn parse_invalid_mp3_header() {
+    let bytes = b"\xFB\xFB\x94\x44";
+
+    let header = Mp3Header::new(bytes);
+    assert!(!header.is_synced())
+  }
+
+  #[test]
+  fn parse_mp3_file() {
+    let mut file = File::open("samples/4tink-raw.mp3").unwrap();
+    let mut buffer = [0; 4usize];
+
+    let mut frames = 0;
+    loop {
+      if file.read_exact(&mut buffer).ok().is_none() {
+        break;
+      }
+      frames += 1;
+      let header = Mp3Header::new(&buffer);
+      assert!(header.is_synced());
+      assert_eq!(header.len(), 384);
+      file.seek(SeekFrom::Current((header.len() - 4) as i64)).unwrap();
+    }
+    assert_eq!(frames, 26);
+  }
+
+  #[test]
   fn parse_frame_header() {
     let bytes = b"\xFF\xFB\x94\x44";
 
-    let (position, frame) = frame_header(bytes).ok().unwrap();
+    let (_, frame) = frame_header(bytes).ok().unwrap();
     println!("{:?}", frame);
     assert_eq!(frame, FrameHeader {
       version: Version::Version1,

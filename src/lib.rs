@@ -200,7 +200,7 @@ impl ID3rs {
       info!("Using padding");
       self.header_size - header_size
     } else {
-      warn!("Growing padding");
+      info!("Growing padding");
       let modulo = (ID3HEADER_SIZE + header_size) % ID3HEADER_ALIGN;
       (2 * ID3HEADER_ALIGN) - modulo
     };

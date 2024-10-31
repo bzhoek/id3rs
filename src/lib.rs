@@ -4,7 +4,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use log::{debug, info, warn, LevelFilter};
+use log::{debug, info, LevelFilter};
 
 use crate::parsers::{all_frames, as_syncsafe, file_header, v23_len, v24_len};
 

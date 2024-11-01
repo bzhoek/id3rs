@@ -12,6 +12,7 @@ fn main() -> Result<()> {
     .about("Rust based ID3 tagging")
     .subcommand_required(true)
     .arg(debug_arg())
+    .arg(verbose_arg())
     .subcommand(Command::new("check")
       .about("Check MP3 frame right after header")
       .arg(Arg::new("FILE")
@@ -23,6 +24,7 @@ fn main() -> Result<()> {
     .get_matches();
 
   configure_logging(&args);
+  let verbose = args.get_flag("VERBOSE");
 
   match args.subcommand() {
     Some(("check", sub)) => {

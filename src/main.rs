@@ -2,7 +2,7 @@ use clap::{Arg, ArgAction, ArgMatches, Command};
 use env_logger::Env;
 use env_logger::Target::Stdout;
 use id3rs::{ID3rs, ID3HEADER_SIZE};
-use log::{debug, warn};
+use log::{debug, info};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 
@@ -31,18 +31,20 @@ fn main() -> Result<()> {
       let id3 = ID3rs::read(filepath)?;
       let word = first_frame(id3)?;
       if word != 0xFFFB {
-        warn!("{} does not start with MP3 frame", filepath);
-        std::process::exit(1);
+        return Err(format!("{} does not start with MP3 frame", filepath).into());
+      }
+      if verbose {
+        info!("{} starts with MP3 frame", filepath);
       }
     }
     Some(("info", sub)) => {
       let filepath = sub.get_one::<String>("FILE").unwrap();
       let id3 = ID3rs::read(filepath)?;
       println!("  File: {:?}", filepath);
-      print(" Title", id3.title());
+      print("  Title", id3.title());
       print(" Artist", id3.artist());
       print("Version", id3.subtitle());
-      println!("Offset: {:#06X}", id3.header_size + ID3HEADER_SIZE);
+      println!(" Offset: {:#06X}", id3.header_size + ID3HEADER_SIZE);
     }
     _ => unreachable!(),
   }
@@ -74,6 +76,14 @@ fn debug_arg() -> Arg {
     .help("Show debug logging")
     .short('d')
     .long("debug")
+    .action(ArgAction::SetTrue)
+}
+
+fn verbose_arg() -> Arg {
+  Arg::new("VERBOSE")
+    .help("Show verbose output")
+    .short('v')
+    .long("verbose")
     .action(ArgAction::SetTrue)
 }
 

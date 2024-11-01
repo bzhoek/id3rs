@@ -8,6 +8,8 @@ use log::{debug, info, LevelFilter};
 
 use crate::parsers::{all_frames, as_syncsafe, file_header, v23_len, v24_len};
 
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+
 pub static TITLE_TAG: &str = "TIT2";
 pub static SUBTITLE_TAG: &str = "TIT3";
 pub static RECORDING_TAG: &str = "TDRC";
@@ -96,7 +98,6 @@ pub enum Frame {
   },
 }
 
-pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 pub struct ID3rs {
   pub path: PathBuf,

@@ -5,8 +5,7 @@ use id3rs::{ID3rs, ID3HEADER_SIZE};
 use log::{debug, info};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-
-pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+use id3rs::Result;
 
 fn main() -> Result<()> {
   let args = Command::new("id3-rs")

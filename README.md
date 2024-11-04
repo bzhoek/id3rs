@@ -73,3 +73,7 @@ Samples-per-frame: 1152 / 8 = 144 bytes
        Frame-size: (144 * Bit-rate / Sample-rate) + (1 if Padding-bit)
          Bit-rate: 12800
       Sample-rate: 44100
+
+## Bibliography
+
+* <https://github.com/Sjord/checkmate/tree/master/mpck>

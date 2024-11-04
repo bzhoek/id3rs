@@ -30,10 +30,7 @@ fn main() -> Result<()> {
     Some(("check", sub)) => {
       let filepath = sub.get_one::<String>("FILE").unwrap();
       let id3 = ID3rs::read(filepath)?;
-      let word = first_frame(id3)?;
-      if word != 0xFFFB {
-        return Err(format!("{} does not start with MP3 frame", filepath).into());
-      }
+      check_first_frame(&id3)?;
       if verbose {
         info!("{} starts with MP3 frame", filepath);
       }
@@ -45,11 +42,21 @@ fn main() -> Result<()> {
       print("  Title", id3.title());
       print(" Artist", id3.artist());
       print("Version", id3.subtitle());
-      println!(" Offset: {:#06X}", id3.header_size + ID3HEADER_SIZE);
+      let size = id3.header_size + ID3HEADER_SIZE;
+      println!(" Offset: {:#06X} {}", size, size);
+      check_first_frame(&id3)?;
     }
     _ => unreachable!(),
   }
 
+  Ok(())
+}
+
+fn check_first_frame(id3: &ID3rs) -> Result<()> {
+  let word = first_frame(id3)?;
+  if word != 0xFFFB {
+    return Err(format!("{:?} does not start with MP3 frame", &id3.path).into());
+  }
   Ok(())
 }
 
@@ -61,8 +68,8 @@ fn print(header: &str, option: Option<&str>) {
   }
 }
 
-fn first_frame(tag: ID3rs) -> Result<u16> {
-  let mut file = File::open(tag.path)?;
+fn first_frame(tag: &ID3rs) -> Result<u16> {
+  let mut file = File::open(tag.path.clone())?;
   if tag.header_size > 0 {
     file.seek(SeekFrom::Start(ID3HEADER_SIZE + tag.header_size))?;
   }

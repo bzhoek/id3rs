@@ -14,6 +14,9 @@ mod tests {
     assert_eq!(result, 367);
     let vec = as_syncsafe(367);
     assert_eq!(vec, bytes);
+    let bytes = b"\x00\x03\x3B\x76";
+    let (_, result) = v24_len(bytes).unwrap();
+    assert_eq!(result, 367);
   }
 
   #[test]

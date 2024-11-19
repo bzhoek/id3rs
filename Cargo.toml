@@ -8,9 +8,9 @@ edition = "2021"
 nom = "7"
 log = "0.4.14"
 env_logger = "0.8.4"
-clap = "4"
+clap = "4.5"
 tempfile = "3.2"
-cc = "1.0.83"
+ursual = { git = "https://github.com/bzhoek/ursual.git" }
 
 [dev-dependencies]
 assert_matches = "1.5"

@@ -1,11 +1,10 @@
-use clap::{Arg, ArgAction, ArgMatches, Command};
-use env_logger::Env;
-use env_logger::Target::Stdout;
+use clap::{Arg, Command};
+use id3rs::Result;
 use id3rs::{ID3rs, ID3HEADER_SIZE};
-use log::{debug, info};
+use log::info;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use id3rs::Result;
+use ursual::{configure_logging, debug_arg, verbose_arg};
 
 fn main() -> Result<()> {
   let args = Command::new("id3-rs")
@@ -13,14 +12,8 @@ fn main() -> Result<()> {
     .subcommand_required(true)
     .arg(debug_arg())
     .arg(verbose_arg())
-    .subcommand(Command::new("check")
-      .about("Check MP3 frame right after header")
-      .arg(Arg::new("FILE")
-        .required(true)))
-    .subcommand(Command::new("info")
-      .about("Display ID3 information")
-      .arg(Arg::new("FILE")
-        .required(true)))
+    .subcommand(Command::new("check").about("Check MP3 frame right after header").arg(Arg::new("FILE").required(true)))
+    .subcommand(Command::new("info").about("Display ID3 information").arg(Arg::new("FILE").required(true)))
     .get_matches();
 
   configure_logging(&args);
@@ -77,26 +70,4 @@ fn first_frame(tag: &ID3rs) -> Result<u16> {
   file.read_exact(&mut buffer).unwrap();
   let word: u16 = ((buffer[0] as u16) << 8) + buffer[1] as u16;
   Ok(word)
-}
-
-fn debug_arg() -> Arg {
-  Arg::new("DEBUG")
-    .help("Show debug logging")
-    .short('d')
-    .long("debug")
-    .action(ArgAction::SetTrue)
-}
-
-fn verbose_arg() -> Arg {
-  Arg::new("VERBOSE")
-    .help("Show verbose output")
-    .short('v')
-    .long("verbose")
-    .action(ArgAction::SetTrue)
-}
-
-fn configure_logging(args: &ArgMatches) {
-  let filter = if args.get_flag("DEBUG") { "debug" } else { "info" };
-  env_logger::Builder::from_env(Env::default().default_filter_or(filter)).target(Stdout).init();
-  debug!("Debug logging");
 }

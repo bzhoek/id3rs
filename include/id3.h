@@ -5,6 +5,8 @@
 
 #define ID3HEADER_SIZE 10
 
+#define ID3HEADER_ALIGN 512
+
 typedef struct ID3rs ID3rs;
 
 struct ID3rs *id3_read(const char *file);

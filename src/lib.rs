@@ -123,7 +123,7 @@ impl ID3rs {
     match header {
       Some(header) => {
         let mut input = vec![0u8; header.tag_size as usize];
-        file.read_exact(&mut input).unwrap();
+        file.read_exact(&mut input)?;
 
         let (_, result) = match header.version {
           3 => all_frames(v23_len)(&input).map_err(|_| "Frames error")?,
@@ -140,7 +140,7 @@ impl ID3rs {
   fn read_header(path: impl AsRef<Path>) -> Result<(File, Option<Header>)> {
     let mut file = File::open(path)?;
     let mut buffer = [0; ID3HEADER_SIZE as usize];
-    file.read_exact(&mut buffer).unwrap();
+    file.read_exact(&mut buffer)?;
     let header = file_header(&buffer).ok().map(|(_, header)| header);
     Ok((file, header))
   }

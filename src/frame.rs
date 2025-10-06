@@ -103,15 +103,15 @@ pub struct FrameHeader {
 
 impl FrameHeader {
   pub fn frame_size(&self) -> u32 {
-    frame_size(&self.layer, self.bitrate, self.frequency, self.padding)
+    Self::frame_sizeof(&self.layer, self.bitrate, self.frequency, self.padding)
   }
-}
 
-pub fn frame_size(layer: &Layer, bitrate: u32, frequency: u32, padding: u8) -> u32 {
-  match layer {
-    Layer::Layer1 => 12 * bitrate / frequency * 4,
-    Layer::Layer2 | Layer::Layer3 => 144000 * bitrate / frequency + padding as u32,
-    Layer::Reserved => panic!("Invalid layer"),
+  pub fn frame_sizeof(layer: &Layer, bitrate: u32, frequency: u32, padding: u8) -> u32 {
+    match layer {
+      Layer::Layer1 => 12 * bitrate / frequency * 4,
+      Layer::Layer2 | Layer::Layer3 => 144000 * bitrate / frequency + padding as u32,
+      Layer::Reserved => panic!("Invalid layer"),
+    }
   }
 }
 
@@ -139,7 +139,7 @@ pub fn frame_header(input: &[u8]) -> IResult<&[u8], FrameHeader> {
   let layer = Layer::from(layer_u8);
   let bitrate = bitrate_to_kbps(&version, &layer, bitrate_u8);
   let frequency = sampling_to_hz(&version, sampling_u8);
-  let size = frame_size(&layer, bitrate, frequency, padding);
+  let size = FrameHeader::frame_sizeof(&layer, bitrate, frequency, padding);
   let (input, data) = nom::bytes::streaming::take(size - 4)(input)?;
   let frame = FrameHeader {
     version,

@@ -77,10 +77,6 @@ impl Iterator for FrameParser {
     }
   }
 }
-fn calculate_frame_size(bitrate: u32, frequency: u32, padding: u8) -> u32 {
-  // Frame size in bytes = 144 * Bitrate / Sampling Rate + Padding
-  (144 * bitrate) / frequency + (padding as u32)
-}
 
 #[cfg(test)]
 mod tests {

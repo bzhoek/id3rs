@@ -1,10 +1,12 @@
+use id3rs::frame::{frame_header, FrameHeader};
+use nom::error::ErrorKind;
 use nom::Err::Incomplete;
-use nom::{bytes, error, number, IResult, Parser};
+use nom::{bytes, error, number, IResult};
 use std::error::Error;
 use std::fs::File;
 use std::io::{self, Read};
 
-const CHUNK_SIZE: usize = 8; // ridiculously small chunk size for example purposes
+const CHUNK_SIZE: usize = 1024; // ridiculously small chunk size for example purposes
 
 struct FrameParser {
   file: File,
@@ -35,6 +37,7 @@ impl FrameParser {
   }
 }
 
+#[allow(dead_code, unused)]
 fn parse_mp3_frame(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
   let (input, result) = bytes::streaming::take_till::<_, _, error::Error<_>>(|b| b == 0xff)(input)?;
   let (_input, word) = number::streaming::be_u16(input)?;
@@ -45,21 +48,27 @@ fn parse_mp3_frame(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
 }
 
 impl Iterator for FrameParser {
-  type Item = Vec<u8>;
+  type Item = FrameHeader;
 
   fn next(&mut self) -> Option<Self::Item> {
     loop {
-      match parse_mp3_frame(&self.buffer) {
+      match frame_header(&self.buffer) {
         Ok((remaining, frame)) => {
+          println!("offset: {} tip: {:?}", self.offset, self.offset - remaining.len());
           self.buffer = remaining.to_vec();
           return Some(frame);
         }
         Err(Incomplete(_)) => {
-          println!("Need more data");
+          println!("Need more data {}", self.offset);
           match self.read_more() {
             Ok(_) => continue,
             Err(_) => return None, // EOF
           }
+        }
+        Err(nom::Err::Error(e)) if e.code == ErrorKind::Tag => {
+          println!("offset {} {:?}", self.offset - e.input.len(), e);
+          let (_, remainder) = e.input.split_at(1);
+          self.buffer = remainder.to_vec();
         }
         Err(e) => {
           panic!("Parse error: {}", e);
@@ -68,14 +77,38 @@ impl Iterator for FrameParser {
     }
   }
 }
+fn calculate_frame_size(bitrate: u32, frequency: u32, padding: u8) -> u32 {
+  // Frame size in bytes = 144 * Bitrate / Sampling Rate + Padding
+  (144 * bitrate) / frequency + (padding as u32)
+}
 
 #[cfg(test)]
 mod tests {
+  use id3rs::frame::FrameHeader;
 
   #[test]
   fn test_iterator() {
     let mut file_iter = crate::FrameParser::new("samples/4tink.mp3").unwrap();
-    let buffer = file_iter.next().unwrap();
-    println!("Parsed line: {}", String::from_utf8_lossy(&*buffer));
+    let header = file_iter.next().unwrap();
+    for header in file_iter {
+      println!("Parsed header: {:?}", header);
+    }
+    // let size = header.frame_size();
+    // assert_eq!(384, size);
+    // println!("Parsed line: {:?}", header);
+  }
+
+  #[test]
+  fn test_layer3_size() {
+    let header = FrameHeader {
+      version: id3rs::frame::Version::Version1,
+      layer: id3rs::frame::Layer::Layer3,
+      crc: id3rs::frame::Protection::Unprotected,
+      bitrate: 128,
+      frequency: 44100,
+      padding: 0,
+    };
+    let size = header.frame_size();
+    assert_eq!(417, size);
   }
 }

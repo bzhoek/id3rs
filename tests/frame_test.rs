@@ -82,6 +82,7 @@ mod tests {
       crc: Protection::Unprotected,
       bitrate: 128,
       frequency: 48000,
+      padding: 0
     });
   }
 
@@ -132,6 +133,7 @@ mod tests {
       crc: Protection::Unprotected,
       bitrate: 128,
       frequency: 48000,
+      padding: 0
     });
     assert_eq!(frame.frame_size(), 384)
   }

@@ -55,17 +55,18 @@ impl Iterator for FrameParser {
       match frame_sync(&self.buffer) {
         Ok((remaining, _)) => {
           self.buffer = remaining.to_vec();
-          match frame_header(&self.buffer) {
+          match frame_header(&self.offset, &self.buffer) {
             Ok((remaining, frame)) => {
               println!("offset: {:?} ceiling: {}", self.offset - self.buffer.len(), self.offset);
               self.buffer = remaining.to_vec();
               return Some(frame);
             }
             Err(Incomplete(_)) => {
+              println!("Need more data {}", self.offset);
               let delta = self.buffer.len() as i64;
               self.offset -= delta as usize;
               self.file.seek(io::SeekFrom::Current(-delta)).unwrap();
-              println!("Need more data {}", self.offset);
+              println!("Need more data {} delta {}", self.offset, delta);
               match self.read_more() {
                 Ok(_) => continue,
                 Err(_) => return None, // EOF
@@ -94,15 +95,20 @@ impl Iterator for FrameParser {
 
 #[cfg(test)]
 mod tests {
+  use std::fs::File;
+  use std::io::Write;
   use id3rs::frame::FrameHeader;
 
   #[test]
   fn test_iterator() {
     let file_iter = crate::FrameParser::new("samples/4tink.mp3").unwrap();
+    let mut file = File::create("frames.mp3").unwrap();
     // let header = file_iter.next().unwrap();
     for (i, header) in file_iter.enumerate() {
       println!("Parsed header {}: {:?}", i, header);
+      file.write_all(&*header.data).unwrap();
     }
+    file.flush().unwrap();
     // let size = header.frame_size();
     // assert_eq!(384, size);
     // println!("Parsed line: {:?}", header);
@@ -117,6 +123,7 @@ mod tests {
       bitrate: 128,
       frequency: 44100,
       padding: 0,
+      data: vec![],
     };
     let size = header.frame_size();
     assert_eq!(417, size);

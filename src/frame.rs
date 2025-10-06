@@ -99,6 +99,7 @@ pub struct FrameHeader {
   pub bitrate: u32,
   pub frequency: u32,
   pub padding: u8,
+  pub data: Vec<u8>
 }
 
 impl FrameHeader {
@@ -123,13 +124,16 @@ pub fn frame_sync(input: &[u8]) -> IResult<&[u8], ()> {
 }
 
 #[allow(dead_code, unused)]
-pub fn frame_header(input: &[u8]) -> IResult<&[u8], FrameHeader> {
+pub fn frame_header<'a>(ceiling: &'a usize, input: &'a [u8]) -> IResult<&'a [u8], FrameHeader> {
   let (input, _) = take_until(b"\xff".as_bytes())(input)?;
+  let start = input;
   let (_input, word) = number::streaming::be_u16(input)?;
   println!("{:b}", word);
   if (word & 0xffe0) != 0xffe0 {
     return Err(nom::Err::Error(error::Error::new(input, error::ErrorKind::Tag)));
   }
+
+  let offset = *ceiling as u64 - input.len() as u64;
 
   let (input, _) = nom::bytes::streaming::take(1u32)(input)?; // skip 0xff
   let (input, (version_u8, layer_u8, crc)) = bits(frame_header_layer)(input)?;
@@ -146,7 +150,8 @@ pub fn frame_header(input: &[u8]) -> IResult<&[u8], FrameHeader> {
   let bitrate = bitrate_to_kbps(&version, &layer, bitrate_u8);
   let frequency = sampling_to_hz(&version, sampling_u8);
   let size = FrameHeader::frame_sizeof(&layer, bitrate, frequency, padding);
-  let (input, data) = nom::bytes::streaming::take(size - 4)(input)?;
+  println!("offset {} frame size: {}", offset, size);
+  let (input, data) = nom::bytes::streaming::take(size)(start)?;
   let frame = FrameHeader {
     version,
     layer,
@@ -154,6 +159,7 @@ pub fn frame_header(input: &[u8]) -> IResult<&[u8], FrameHeader> {
     bitrate,
     frequency,
     padding,
+    data: data.to_vec(),
   };
 
   Ok((input, frame))

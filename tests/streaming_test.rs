@@ -60,7 +60,7 @@ impl Iterator for FrameParser {
       match frame_sync(&self.buffer) {
         Ok((remaining, _)) => {
           self.buffer = remaining.to_vec();
-          match frame_header(&self.ceiling, &self.buffer) {
+          match frame_header(&self.buffer) {
             Ok((remaining, frame)) => {
               self.buffer = remaining.to_vec();
               return Some(frame);

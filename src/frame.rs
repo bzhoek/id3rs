@@ -117,6 +117,12 @@ impl FrameHeader {
 
 // http://id3lib.sourceforge.net/id3/mp3frame.html and http://www.mp3-tech.org/programmer/frame_header.html
 #[allow(dead_code, unused)]
+pub fn frame_sync(input: &[u8]) -> IResult<&[u8], ()> {
+  let (input, _) = take_until(b"\xff".as_bytes())(input)?;
+  Ok((input, ()))
+}
+
+#[allow(dead_code, unused)]
 pub fn frame_header(input: &[u8]) -> IResult<&[u8], FrameHeader> {
   let (input, _) = take_until(b"\xff".as_bytes())(input)?;
   let (_input, word) = number::streaming::be_u16(input)?;
@@ -129,7 +135,7 @@ pub fn frame_header(input: &[u8]) -> IResult<&[u8], FrameHeader> {
   let (input, (version_u8, layer_u8, crc)) = bits(frame_header_layer)(input)?;
   let (input, (bitrate_u8, sampling_u8, padding, private)) = bits(frame_header_bitrate)(input)?;
   let (input, (channel, mode, copyright, original, emphasis)) = bits(frame_header_mode)(input)?;
-  println!("input size {:?}", input.len());
+  // println!("input size {:?}", input.len());
 
   // let (input, frame) = nom::bits::complete::tag(0b111, 3usize)(input)?;
   // let (_input, (bitrate, frequency, padding,private))

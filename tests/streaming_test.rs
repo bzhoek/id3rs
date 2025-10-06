@@ -1,10 +1,10 @@
-use id3rs::frame::{frame_header, FrameHeader};
+use id3rs::frame::{frame_header, frame_sync, FrameHeader};
 use nom::error::ErrorKind;
 use nom::Err::Incomplete;
 use nom::{bytes, error, number, IResult};
 use std::error::Error;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, Read, Seek};
 
 const CHUNK_SIZE: usize = 1024; // ridiculously small chunk size for example purposes
 
@@ -52,26 +52,40 @@ impl Iterator for FrameParser {
 
   fn next(&mut self) -> Option<Self::Item> {
     loop {
-      match frame_header(&self.buffer) {
-        Ok((remaining, frame)) => {
-          println!("offset: {} tip: {:?}", self.offset, self.offset - remaining.len());
+      match frame_sync(&self.buffer) {
+        Ok((remaining, _)) => {
           self.buffer = remaining.to_vec();
-          return Some(frame);
+          match frame_header(&self.buffer) {
+            Ok((remaining, frame)) => {
+              println!("offset: {:?} ceiling: {}", self.offset - self.buffer.len(), self.offset);
+              self.buffer = remaining.to_vec();
+              return Some(frame);
+            }
+            Err(Incomplete(_)) => {
+              let delta = self.buffer.len() as i64;
+              self.offset -= delta as usize;
+              self.file.seek(io::SeekFrom::Current(-delta)).unwrap();
+              println!("Need more data {}", self.offset);
+              match self.read_more() {
+                Ok(_) => continue,
+                Err(_) => return None, // EOF
+              }
+            }
+            Err(nom::Err::Error(e)) if e.code == ErrorKind::Tag => {
+              println!("offset {} {:?}", self.offset - e.input.len(), e);
+              let (_, remainder) = e.input.split_at(1);
+              self.buffer = remainder.to_vec();
+            }
+            Err(e) => {
+              panic!("Parse error: {}", e);
+            }
+          }
         }
-        Err(Incomplete(_)) => {
-          println!("Need more data {}", self.offset);
+        Err(_) => {
           match self.read_more() {
             Ok(_) => continue,
             Err(_) => return None, // EOF
           }
-        }
-        Err(nom::Err::Error(e)) if e.code == ErrorKind::Tag => {
-          println!("offset {} {:?}", self.offset - e.input.len(), e);
-          let (_, remainder) = e.input.split_at(1);
-          self.buffer = remainder.to_vec();
-        }
-        Err(e) => {
-          panic!("Parse error: {}", e);
         }
       }
     }
@@ -84,10 +98,10 @@ mod tests {
 
   #[test]
   fn test_iterator() {
-    let mut file_iter = crate::FrameParser::new("samples/4tink.mp3").unwrap();
-    let header = file_iter.next().unwrap();
-    for header in file_iter {
-      println!("Parsed header: {:?}", header);
+    let file_iter = crate::FrameParser::new("samples/4tink.mp3").unwrap();
+    // let header = file_iter.next().unwrap();
+    for (i, header) in file_iter.enumerate() {
+      println!("Parsed header {}: {:?}", i, header);
     }
     // let size = header.frame_size();
     // assert_eq!(384, size);

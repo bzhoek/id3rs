@@ -11,7 +11,7 @@ const CHUNK_SIZE: usize = 1024; // ridiculously small chunk size for example pur
 struct FrameParser {
   file: File,
   buffer: Vec<u8>,
-  offset: usize,
+  ceiling: usize,
 }
 
 impl FrameParser {
@@ -20,8 +20,13 @@ impl FrameParser {
     Ok(FrameParser {
       file,
       buffer: Vec::new(),
-      offset: 0,
+      ceiling: 0,
     })
+  }
+
+  fn seek_back(&mut self, delta: i64) {
+    self.ceiling -= delta as usize;
+    self.file.seek(io::SeekFrom::Current(-delta)).unwrap();
   }
 
   fn read_more(&mut self) -> Result<(), Box<dyn Error>> {
@@ -31,7 +36,7 @@ impl FrameParser {
       Err("EOF")?
     } else {
       self.buffer = buffer;
-      self.offset += len;
+      self.ceiling += len;
       Ok(())
     }
   }
@@ -55,25 +60,21 @@ impl Iterator for FrameParser {
       match frame_sync(&self.buffer) {
         Ok((remaining, _)) => {
           self.buffer = remaining.to_vec();
-          match frame_header(&self.offset, &self.buffer) {
+          match frame_header(&self.ceiling, &self.buffer) {
             Ok((remaining, frame)) => {
-              println!("offset: {:?} ceiling: {}", self.offset - self.buffer.len(), self.offset);
               self.buffer = remaining.to_vec();
               return Some(frame);
             }
             Err(Incomplete(_)) => {
-              println!("Need more data {}", self.offset);
               let delta = self.buffer.len() as i64;
-              self.offset -= delta as usize;
-              self.file.seek(io::SeekFrom::Current(-delta)).unwrap();
-              println!("Need more data {} delta {}", self.offset, delta);
+              self.seek_back(delta);
               match self.read_more() {
                 Ok(_) => continue,
                 Err(_) => return None, // EOF
               }
             }
             Err(nom::Err::Error(e)) if e.code == ErrorKind::Tag => {
-              println!("offset {} {:?}", self.offset - e.input.len(), e);
+              println!("offset {} {:?}", self.ceiling - e.input.len(), e);
               let (_, remainder) = e.input.split_at(1);
               self.buffer = remainder.to_vec();
             }
@@ -95,9 +96,9 @@ impl Iterator for FrameParser {
 
 #[cfg(test)]
 mod tests {
+  use id3rs::frame::FrameHeader;
   use std::fs::File;
   use std::io::Write;
-  use id3rs::frame::FrameHeader;
 
   #[test]
   fn test_iterator() {

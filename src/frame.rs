@@ -4,6 +4,17 @@ use nom::bytes::streaming::take_until;
 use nom::{error, number, AsBytes, IResult};
 
 #[derive(Debug, PartialEq)]
+pub struct FrameHeader {
+  pub version: Version,
+  pub layer: Layer,
+  pub crc: Protection,
+  pub bitrate: u32,
+  pub frequency: u32,
+  pub padding: u8,
+  pub data: Vec<u8>
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Version {
   Version25,
   Version2,
@@ -41,40 +52,6 @@ impl From<u8> for Layer {
   }
 }
 
-fn bitrate_to_kbps(version: &Version, layer: &Layer, bitrate: u8) -> u32 {
-  match (version, layer) {
-    (Version::Version1, Layer::Layer3) => match bitrate {
-      0b0001 => 32,
-      0b0010 => 40,
-      0b0011 => 48,
-      0b0100 => 56,
-      0b0101 => 64,
-      0b0110 => 80,
-      0b0111 => 96,
-      0b1000 => 112,
-      0b1001 => 128,
-      0b1010 => 160,
-      0b1011 => 192,
-      0b1100 => 224,
-      0b1101 => 256,
-      0b1110 => 320,
-      _ => 0,
-    },
-    (_, _) => 0,
-  }
-}
-
-fn sampling_to_hz(version: &Version, sampling: u8) -> u32 {
-  match version {
-    Version::Version1 => match sampling {
-      0b0000 => 44100,
-      0b0001 => 48000,
-      0b0010 => 32000,
-      _ => 0,
-    },
-    _ => 0,
-  }
-}
 
 #[derive(Debug, PartialEq)]
 pub enum Protection {
@@ -91,20 +68,44 @@ impl From<u8> for Protection {
   }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct FrameHeader {
-  pub version: Version,
-  pub layer: Layer,
-  pub crc: Protection,
-  pub bitrate: u32,
-  pub frequency: u32,
-  pub padding: u8,
-  pub data: Vec<u8>
-}
-
 impl FrameHeader {
   pub fn frame_size(&self) -> u32 {
     Self::frame_sizeof(&self.layer, self.bitrate, self.frequency, self.padding)
+  }
+
+  fn bitrate_to_kbps(version: &Version, layer: &Layer, bitrate: u8) -> u32 {
+    match (version, layer) {
+      (Version::Version1, Layer::Layer3) => match bitrate {
+        0b0001 => 32,
+        0b0010 => 40,
+        0b0011 => 48,
+        0b0100 => 56,
+        0b0101 => 64,
+        0b0110 => 80,
+        0b0111 => 96,
+        0b1000 => 112,
+        0b1001 => 128,
+        0b1010 => 160,
+        0b1011 => 192,
+        0b1100 => 224,
+        0b1101 => 256,
+        0b1110 => 320,
+        _ => 0,
+      },
+      (_, _) => 0,
+    }
+  }
+
+  fn sampling_to_hz(version: &Version, sampling: u8) -> u32 {
+    match version {
+      Version::Version1 => match sampling {
+        0b0000 => 44100,
+        0b0001 => 48000,
+        0b0010 => 32000,
+        _ => 0,
+      },
+      _ => 0,
+    }
   }
 
   pub fn frame_sizeof(layer: &Layer, bitrate: u32, frequency: u32, padding: u8) -> u32 {
@@ -147,8 +148,8 @@ pub fn frame_header<'a>(ceiling: &'a usize, input: &'a [u8]) -> IResult<&'a [u8]
 
   let version = Version::from(version_u8);
   let layer = Layer::from(layer_u8);
-  let bitrate = bitrate_to_kbps(&version, &layer, bitrate_u8);
-  let frequency = sampling_to_hz(&version, sampling_u8);
+  let bitrate = FrameHeader::bitrate_to_kbps(&version, &layer, bitrate_u8);
+  let frequency = FrameHeader::sampling_to_hz(&version, sampling_u8);
   let size = FrameHeader::frame_sizeof(&layer, bitrate, frequency, padding);
   println!("offset {} frame size: {}", offset, size);
   let (input, data) = nom::bytes::streaming::take(size)(start)?;

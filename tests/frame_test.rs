@@ -3,7 +3,7 @@ pub struct Mp3Header<'a> {
 }
 
 impl Mp3Header<'_> {
-  pub fn new(bytes: &[u8; 4]) -> Mp3Header {
+  pub fn new(bytes: &[u8; 4]) -> Mp3Header<'_> {
     Mp3Header { bytes }
   }
 

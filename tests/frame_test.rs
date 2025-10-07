@@ -129,7 +129,6 @@ mod tests {
     sync.append(&mut data);
 
     let (_, frame) = frame_header(&*sync).ok().unwrap();
-    println!("{:?}", frame);
     assert_eq!(frame, FrameHeader {
       version: Version::Version1,
       layer: Layer::Layer3,

@@ -4,8 +4,8 @@ mod tests {
 
   use assert_matches::assert_matches;
 
+  use id3rs::parsers::{all_frames, as_syncsafe, comment_frame, extended_text_frame, file_header, generic_frame, object_frame, padding, text_frame, v24_len};
   use id3rs::*;
-  use id3rs::parsers::{all_frames, as_syncsafe, comment_frame, extended_text_frame, file_header, generic_frame, object_frame, padding, text_frame, v23_len, v24_len};
 
   #[test]
   fn test_tink_header_parsing() {

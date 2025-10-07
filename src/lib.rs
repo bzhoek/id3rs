@@ -30,6 +30,7 @@ pub static PICTURE_TAG: &str = "APIC";
 pub mod frame;
 pub mod parsers;
 pub mod ffi;
+pub mod mp3_parser;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Header {

@@ -57,37 +57,37 @@ impl Iterator for FrameParser {
 
   fn next(&mut self) -> Option<Self::Item> {
     loop {
-      match frame_sync(&self.buffer) {
-        Ok((remaining, _)) => {
-          self.buffer = remaining.to_vec();
-          match frame_header(&self.buffer) {
-            Ok((remaining, frame)) => {
-              self.buffer = remaining.to_vec();
-              return Some(frame);
-            }
-            Err(Incomplete(_)) => {
-              let delta = self.buffer.len() as i64;
-              self.seek_back(delta);
-              match self.read_more() {
-                Ok(_) => continue,
-                Err(_) => return None, // EOF
-              }
-            }
-            Err(nom::Err::Error(e)) if e.code == ErrorKind::Tag => {
-              println!("offset {} {:?}", self.ceiling - e.input.len(), e);
-              let (_, remainder) = e.input.split_at(1);
-              self.buffer = remainder.to_vec();
-            }
-            Err(e) => {
-              panic!("Parse error: {}", e);
-            }
-          }
-        }
+      let remaining = match frame_sync(&self.buffer) {
+        Ok((remaining, _)) => remaining,
         Err(_) => {
           match self.read_more() {
             Ok(_) => continue,
             Err(_) => return None, // EOF
           }
+        }
+      };
+
+      self.buffer = remaining.to_vec();
+      match frame_header(&self.buffer) {
+        Ok((remaining, frame)) => {
+          self.buffer = remaining.to_vec();
+          return Some(frame);
+        }
+        Err(Incomplete(_)) => {
+          let delta = self.buffer.len() as i64;
+          self.seek_back(delta);
+          match self.read_more() {
+            Ok(_) => continue,
+            Err(_) => return None, // EOF
+          }
+        }
+        Err(nom::Err::Error(e)) if e.code == ErrorKind::Tag => {
+          println!("offset {} {:?}", self.ceiling - e.input.len(), e);
+          let (_, remainder) = e.input.split_at(1);
+          self.buffer = remainder.to_vec();
+        }
+        Err(e) => {
+          panic!("Parse error: {}", e);
         }
       }
     }

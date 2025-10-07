@@ -1,3 +1,4 @@
+use log::debug;
 use nom::bits::streaming::tag;
 use nom::bits::{bits, streaming::take};
 use nom::bytes::streaming::take_until;
@@ -11,7 +12,7 @@ pub struct FrameHeader {
   pub bitrate: u32,
   pub frequency: u32,
   pub padding: u8,
-  pub data: Vec<u8>
+  pub data: Vec<u8>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -51,7 +52,6 @@ impl From<u8> for Layer {
     }
   }
 }
-
 
 #[derive(Debug, PartialEq)]
 pub enum Protection {
@@ -125,11 +125,11 @@ pub fn frame_sync(input: &[u8]) -> IResult<&[u8], ()> {
 }
 
 #[allow(dead_code, unused)]
-pub fn frame_header<'a>(input: &'a [u8]) -> IResult<&'a [u8], FrameHeader> {
+pub fn frame_header(input: &[u8]) -> IResult<&[u8], FrameHeader> {
   let (input, _) = take_until(b"\xff".as_bytes())(input)?;
   let start = input;
   let (_input, word) = number::streaming::be_u16(input)?;
-  println!("{:b}", word);
+  debug!("syncword {:b}", word);
   if (word & 0xffe0) != 0xffe0 {
     return Err(nom::Err::Error(error::Error::new(input, error::ErrorKind::Tag)));
   }
@@ -138,11 +138,6 @@ pub fn frame_header<'a>(input: &'a [u8]) -> IResult<&'a [u8], FrameHeader> {
   let (input, (version_u8, layer_u8, crc)) = bits(frame_header_layer)(input)?;
   let (input, (bitrate_u8, sampling_u8, padding, private)) = bits(frame_header_bitrate)(input)?;
   let (input, (channel, mode, copyright, original, emphasis)) = bits(frame_header_mode)(input)?;
-  // println!("input size {:?}", input.len());
-
-  // let (input, frame) = nom::bits::complete::tag(0b111, 3usize)(input)?;
-  // let (_input, (bitrate, frequency, padding,private))
-  //   = bits(tuple((take(4usize), take(2usize), take(1usize), take(1usize))))(input)?;
 
   let version = Version::from(version_u8);
   let layer = Layer::from(layer_u8);

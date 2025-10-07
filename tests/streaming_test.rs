@@ -1,12 +1,12 @@
 use id3rs::frame::{frame_header, frame_sync, FrameHeader};
+use log::LevelFilter;
 use nom::error::ErrorKind;
 use nom::Err::Incomplete;
-use nom::{bytes, error, number, IResult};
 use std::error::Error;
 use std::fs::File;
 use std::io::{self, Read, Seek};
 
-const CHUNK_SIZE: usize = 1024; // ridiculously small chunk size for example purposes
+const CHUNK_SIZE: usize = 1024;
 
 struct FrameParser {
   file: File,
@@ -40,16 +40,6 @@ impl FrameParser {
       Ok(())
     }
   }
-}
-
-#[allow(dead_code, unused)]
-fn parse_mp3_frame(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
-  let (input, result) = bytes::streaming::take_till::<_, _, error::Error<_>>(|b| b == 0xff)(input)?;
-  let (_input, word) = number::streaming::be_u16(input)?;
-  if (word & 0xffe0) != 0xffe0 {
-    return Err(nom::Err::Error(error::Error::new(input, error::ErrorKind::Tag)));
-  }
-  Ok((input, result.to_vec()))
 }
 
 impl Iterator for FrameParser {
@@ -95,24 +85,32 @@ impl Iterator for FrameParser {
 }
 
 #[cfg(test)]
+#[ctor::ctor]
+fn init() {
+  let _ = env_logger::builder().is_test(true).filter_level(LevelFilter::Debug).try_init();
+}
+
+#[cfg(test)]
 mod tests {
   use id3rs::frame::FrameHeader;
   use std::fs::File;
   use std::io::Write;
 
   #[test]
-  fn test_iterator() {
-    let file_iter = crate::FrameParser::new("samples/4tink.mp3").unwrap();
+  fn test_writing() {
     let mut file = File::create("frames.mp3").unwrap();
-    // let header = file_iter.next().unwrap();
-    for (i, header) in file_iter.enumerate() {
-      println!("Parsed header {}: {:?}", i, header);
+    let file_iter = crate::FrameParser::new("samples/4tink.mp3").unwrap();
+    for header in file_iter {
       file.write_all(&*header.data).unwrap();
     }
     file.flush().unwrap();
-    // let size = header.frame_size();
-    // assert_eq!(384, size);
-    // println!("Parsed line: {:?}", header);
+  }
+
+  #[test]
+  fn test_iterator() {
+    let file_iter = crate::FrameParser::new("samples/4tink.mp3").unwrap();
+    let frames: Vec<_> = file_iter.collect();
+    assert_eq!(26, frames.len());
   }
 
   #[test]

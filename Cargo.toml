@@ -15,6 +15,7 @@ ursual = { git = "https://github.com/bzhoek/ursual.git" }
 [dev-dependencies]
 assert_matches = "1.5"
 rand = "0.8"
+ctor = "0.5.0"
 
 [lib]
 crate-type = ["lib", "staticlib"]

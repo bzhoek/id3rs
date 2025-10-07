@@ -4,7 +4,7 @@ use std::io;
 use std::io::{Read, Seek};
 use nom::Err::Incomplete;
 use nom::error::ErrorKind;
-use crate::frame::{frame_header, frame_sync, FrameHeader};
+use crate::mp3_frame::{frame_header, frame_sync, FrameHeader};
 
 const CHUNK_SIZE: usize = 1024;
 

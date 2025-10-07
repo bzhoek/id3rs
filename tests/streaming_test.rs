@@ -8,7 +8,7 @@ fn init() {
 
 #[cfg(test)]
 mod tests {
-  use id3rs::frame::FrameHeader;
+  use id3rs::mp3_frame::FrameHeader;
   use id3rs::mp3_parser::Mp3FrameParser;
   use std::fs::File;
   use std::io::Write;
@@ -33,9 +33,9 @@ mod tests {
   #[test]
   fn test_layer3_size() {
     let header = FrameHeader {
-      version: id3rs::frame::Version::Version1,
-      layer: id3rs::frame::Layer::Layer3,
-      crc: id3rs::frame::Protection::Unprotected,
+      version: id3rs::mp3_frame::Version::Version1,
+      layer: id3rs::mp3_frame::Layer::Layer3,
+      crc: id3rs::mp3_frame::Protection::Unprotected,
       bitrate: 128,
       frequency: 44100,
       padding: 0,

@@ -4,7 +4,7 @@ mod tests {
 
   use assert_matches::assert_matches;
 
-  use id3rs::parsers::{all_frames, as_syncsafe, comment_frame, extended_text_frame, file_header, generic_frame, object_frame, padding, text_frame, v24_len};
+  use id3rs::id3_parsers::{all_frames, as_syncsafe, comment_frame, extended_text_frame, file_header, generic_frame, object_frame, padding, text_frame, v24_len};
   use id3rs::*;
 
   #[test]

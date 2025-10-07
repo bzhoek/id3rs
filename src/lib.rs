@@ -6,7 +6,7 @@ use std::process::Command;
 
 use log::{debug, info, LevelFilter};
 
-use crate::parsers::{all_frames, as_syncsafe, file_header, v23_len, v24_len};
+use crate::id3_parsers::{all_frames, as_syncsafe, file_header, v23_len, v24_len};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -27,8 +27,8 @@ pub static GROUPING_TAG: &str = "GRP1";
 pub static EXTENDED_TAG: &str = "TXXX";
 pub static PICTURE_TAG: &str = "APIC";
 
-pub mod frame;
-pub mod parsers;
+pub mod mp3_frame;
+pub mod id3_parsers;
 pub mod ffi;
 pub mod mp3_parser;
 

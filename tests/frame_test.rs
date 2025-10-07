@@ -66,7 +66,7 @@ impl Mp3Header<'_> {
 #[cfg(test)]
 mod tests {
   use crate::Mp3Header;
-  use id3rs::frame::{frame_header, FrameHeader, Layer, Protection, Version};
+  use id3rs::mp3_frame::{frame_header, FrameHeader, Layer, Protection, Version};
   use std::fs::File;
   use std::io::{Read, Seek, SeekFrom};
 

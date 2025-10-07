@@ -8,7 +8,7 @@ mod tests {
   use assert_matches::assert_matches;
 
   use crate::ID3FRAME_SIZE;
-  use id3rs::parsers::as_syncsafe;
+  use id3rs::id3_parsers::as_syncsafe;
   use id3rs::{log_init, make_rwcopy, mpck, Frame, ID3rs, GENRE_TAG};
 
   mod v23 {

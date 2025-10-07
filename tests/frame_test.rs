@@ -73,16 +73,17 @@ mod tests {
   #[test]
   fn find_frame_header() {
     let buffer = include_bytes!("../samples/4tink.mp3");
-    let (position, frame) = frame_header(&buffer[1114..]).ok().unwrap();
-    assert_eq!(buffer.len() - position.len(), 1128);
-    println!("{:?}", frame);
+    let (position, mut frame) = frame_header(&buffer[1114..]).ok().unwrap();
+    assert_eq!(buffer.len() - position.len(), 1128 + 380);
+    frame.data = vec![];
     assert_eq!(frame, FrameHeader {
       version: Version::Version1,
       layer: Layer::Layer3,
       crc: Protection::Unprotected,
       bitrate: 128,
       frequency: 48000,
-      padding: 0
+      padding: 0,
+      data: vec![],
     });
   }
 
@@ -123,9 +124,11 @@ mod tests {
 
   #[test]
   fn parse_frame_header() {
-    let bytes = b"\xFF\xFB\x94\x44";
+    let mut sync = Vec::from(b"\xFF\xFB\x94\x44");
+    let mut data: Vec<u8> = vec![0; 380];
+    sync.append(&mut data);
 
-    let (_, frame) = frame_header(bytes).ok().unwrap();
+    let (_, frame) = frame_header(&*sync).ok().unwrap();
     println!("{:?}", frame);
     assert_eq!(frame, FrameHeader {
       version: Version::Version1,
@@ -133,7 +136,8 @@ mod tests {
       crc: Protection::Unprotected,
       bitrate: 128,
       frequency: 48000,
-      padding: 0
+      padding: 0,
+      data: sync,
     });
     assert_eq!(frame.frame_size(), 384)
   }

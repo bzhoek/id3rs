@@ -226,6 +226,7 @@ mod tests {
 
         let tag = ID3rs::read(&rwfile).unwrap();
         assert_eq!(tag.popularity( "bas@hoek.com"), Some(("bas@hoek.com", 3)));
+        assert_eq!(tag.popularities(), vec![("bas@hoek.com", 3)]);
         assert_eq!(mpck(&rofile), mpck(&rwfile));
       });
     }

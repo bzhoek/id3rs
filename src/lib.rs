@@ -340,6 +340,17 @@ impl ID3rs {
     })
   }
 
+
+  pub fn popularities(&self) -> Vec<(&str, u8)> {
+    self.frames.iter().flat_map(|f| {
+      match f {
+        Frame::Popularity { id, email, rating, .. } if id == POPULARITY_TAG =>
+          Some((email.as_str(), rating / 51)),
+        _ => None
+      }
+    }).collect()
+  }
+
   pub fn popularity(&self, author: &str) -> Option<(&str, u8)> {
     self.frames.iter().find_map(|f| {
       match f {

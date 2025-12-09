@@ -340,10 +340,10 @@ impl ID3rs {
     })
   }
 
-  pub fn popularity(&self) -> Option<(&str, u8)> {
+  pub fn popularity(&self, author: &str) -> Option<(&str, u8)> {
     self.frames.iter().find_map(|f| {
       match f {
-        Frame::Popularity { id, email, rating, .. } if id == POPULARITY_TAG =>
+        Frame::Popularity { id, email, rating, .. } if id == POPULARITY_TAG && email == author =>
           Some((email.as_str(), rating / 51)),
         _ => None
       }

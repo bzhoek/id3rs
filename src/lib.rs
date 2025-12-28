@@ -4,7 +4,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use log::{debug, info, LevelFilter};
+use log::{debug, LevelFilter};
 
 use crate::id3_parsers::{all_frames, as_syncsafe, file_header, v23_len, v24_len};
 
@@ -199,10 +199,10 @@ impl ID3rs {
   fn write_padding(&self, out: &mut File) -> Result<u64> {
     let mut header_size = out.stream_position()? - ID3HEADER_SIZE;
     let padding = if header_size < self.header_size {
-      info!("Using padding");
+      debug!("Using padding");
       self.header_size - header_size
     } else {
-      info!("Growing padding");
+      debug!("Growing padding");
       let modulo = (ID3HEADER_SIZE + header_size) % ID3HEADER_ALIGN;
       (2 * ID3HEADER_ALIGN) - modulo
     };

@@ -494,6 +494,13 @@ impl ID3rs {
     })
   }
 
+  pub fn clear_popularities(&mut self) {
+    self.frames.retain(|frame| match frame {
+      Frame::Popularity { .. } => false,
+      _ => true
+    });
+  }
+
   pub fn set_popularity(&mut self, author: &str, rating: u8) {
     assert!(rating <= 5);
     if let Some(index) = self.frames.iter().position(|frame|

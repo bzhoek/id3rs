@@ -217,6 +217,26 @@ mod tests {
     }
 
     #[test]
+    pub fn test_clear_popularity() {
+      rw_test(FILENAME, |(rofile, _, rwfile)| {
+        let mut tag = ID3rs::read(&rwfile).unwrap();
+        tag.set_popularity("bas@hoek.com", 3);
+        tag.set_track(1, 1);
+        tag.write_to(&rwfile).unwrap();
+
+        let mut tag = ID3rs::read(&rwfile).unwrap();
+        assert_eq!(tag.popularity( "bas@hoek.com"), Some(("bas@hoek.com", 3)));
+        assert_eq!(tag.popularities(), vec![("bas@hoek.com", 3)]);
+        tag.clear_popularities();
+        tag.write_to(&rwfile).unwrap();
+
+        let tag = ID3rs::read(&rwfile).unwrap();
+        assert_eq!(tag.popularities(), vec![]);
+        assert_eq!(mpck(&rofile), mpck(&rwfile));
+      });
+    }
+
+    #[test]
     pub fn test_set_popularity() {
       rw_test(FILENAME, |(rofile, _, rwfile)| {
         let mut tag = ID3rs::read(&rwfile).unwrap();
